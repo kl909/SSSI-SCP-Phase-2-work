@@ -10,5 +10,10 @@
 data/
 full_panthon_test/data/
 
+# Ignore R data objects
+*.RData
+*.Rds
+*.RDA
+
 # Ignore temporary lock files from Excel/LibreOffice
 .~lock.*

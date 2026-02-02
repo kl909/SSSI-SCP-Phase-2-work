@@ -1,8 +1,10 @@
 library(dplyr)
 library(readr)
+library(here)
+library(tidyr)
 
 # read in the data
-data <- read_csv("merged_data.csv")
+data <- read_csv(here("merged_data.csv"))
 
 # generate new dataframe for presences
 formatted_presence <- data %>%

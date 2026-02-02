@@ -8,122 +8,95 @@ library(stringr)
 library(here)
 library(readr)
 
-
-
-###### get species list
-# Pantheon species list
+###### 1. get species list
+# load Pantheon species csv
 pantheon_data <- read_csv(here("pantheon_w2_species_list.csv"))
 
 # Pull species from Pantheon dataframe
 species_list <- pantheon_data %>%
   pull(Species) %>%
-  unique()
+  gsub("\\s*\\([^\\)]+\\)", "", .) %>%  # Removes "(Ranatra)" etc.
+  unique() %>%
+  na.omit
 
+##### 2. create directory 
+dir.create(here("data", "nbn_temp"), recursive = TRUE, showWarnings = FALSE)
 
-# 2. DEFINE FUNCTION ---------------------------------------------------------
-# Function to get all NBN occurrences since 1970 for one species
-get_nbn_occ <- function(species_name) {
-  
-  message(paste("Downloading records for:", species_name))
-  
-  # Pause for 5 seconds to be polite to the server (prevents some 403s)
-  Sys.sleep(10) # 10 seconds
-  
-  tryCatch({
-    df <- galah_call() |>
-      galah_identify(species_name) |>
-      galah_filter(year >= 1970,
-                   license != "CC-BY-NC"  # <--- THIS excludes Non-Commercial data
-                   ) |>
-      galah_select(scientificName, 
-                   decimalLatitude, 
-                   decimalLongitude, 
-                   coordinateUncertaintyInMeters,
-                   gridReference,
-                   eventDate, 
-                   year,
-                   license) |> 
-      atlas_occurrences()
-    
-    # Check if empty
-    if (is.null(df) || nrow(df) == 0) {
-      warning(paste("No records found for", species_name))
-      return(NULL)
-    }
-    
-    # Force column types to prevent bind_rows() errors
-    # Standardize data types
-    return(df %>% mutate(across(everything(), as.character))) 
-    
-  }, error = function(e) {
-    # This captures the 403 error specifically
-    if (grepl("403", e$message)) {
-      stop("NBN has blocked us (403). Stopping to prevent long-term ban.")
-    }
-    message(paste("Skipped", species_name, ":", e$message))
-    return(NULL)
-  })
-}
+##### 3. load configurations
+galah_config(atlas = "United Kingdom", 
+             email = "kl909@york.ac.uk")
 
+# set reason
+galah_config(download_reason_id = 17)
 
-# 3. EXECUTE DOWNLOAD --------------------------------------------------------
-# Remove anything inside brackets and extra spaces
-species_list <- gsub("\\s*\\([^\\)]+\\)", "", species_list)
-
-# Create a folder for the individual species files
-dir.create(here("data", "nbn_temp"), showWarnings = FALSE)
-
-#### force the configuration
-galah_config(atlas = "United Kingdom",
-             email = "kl909@york.ac.uk",
-             download_reason_id = 17)
-
+# 4. THE LOOP
 for (sp in species_list) {
   
-  # Define a filename for this specific species
-  # We replace spaces with underscores to keep filenames clean
+  # Define the checkpoint file path
   file_path <- here("data", "nbn_temp", paste0(gsub(" ", "_", sp), ".csv"))
   
-  # SKIP if we already have this file
+  # STEP A: Check if we already have it (The "Colleague" Strategy)
   if (file.exists(file_path)) {
-    message(paste("Skipping (already downloaded):", sp))
+    message(paste("skipping (already have data for):", sp))
     next
   }
   
-  # Try to download
-  dat <- get_nbn_occ(sp)
+  # STEP B: Try to download with retries
+  success <- FALSE
+  attempt <- 1
+  max_retries <- 3
   
-  # Save immediately if data was found
-  if (!is.null(dat) && nrow(dat) > 0) {
-    write_csv(dat, file_path)
-    message(paste("Successfully saved:", sp))
-  } else {
-    # Even if no records found, save an empty file so we don't check it again
-    write_csv(data.frame(), file_path)
+  while (!success && attempt <= max_retries) {
+    message(paste("Checking NBN for:", sp, "| Attempt:", attempt))
+    
+    dat <- tryCatch({
+      galah_call() %>%
+        galah_identify(sp) %>%
+        galah_filter(year >= 1970, license != "CC-BY-NC") %>%
+        galah_select(scientificName, decimalLatitude, decimalLongitude, 
+                     coordinateUncertaintyInMeters, gridReference, eventDate, year) %>%
+        atlas_occurrences()
+    }, error = function(e) {
+      if (grepl("403", e$message)) return("403_ERROR")
+      return(NULL)
+    })
+    
+    # NEW LOGIC: If it's a 403, it's likely sensitive. Skip it after 1 try.
+    if (identical(dat, "403_ERROR")) {
+      message(paste(" 403 Forbidden for", sp, "- likely sensitive/protected. Skipping species."))
+      
+      # Save an empty file so the loop skips it next time you run the script
+      write_csv(data.frame(noted_error = "403_Forbidden_Sensitive"), file_path)
+      
+      success <- TRUE # We set success to TRUE just to break the WHILE loop
+      break           # Break the while loop immediately
+      
+    } else if (is.null(dat) || nrow(dat) == 0) {
+      write_csv(data.frame(), file_path)
+      message(paste("No records found for:", sp))
+      success <- TRUE 
+    } else {
+      write_csv(dat, file_path)
+      message(paste("Successfully saved:", sp))
+      success <- TRUE
+    }
   }
   
-  # INCREASE PAUSE: Let's be extra cautious
-  message("Waiting 10 seconds...")
-  Sys.sleep(10)
+  # STEP C: Mandatory pause between different species
+  if (success) {
+    message("Waiting 10 seconds before next species...")
+    Sys.sleep(10)
+  }
 }
 
-# Read all those tiny CSVs and stack them together
-all_nbn_data <- list.files(here("data", "nbn_temp"), full.names = TRUE) %>%
-  lapply(read_csv) %>%
+##### 5. combine all files
+all_occurances <- list.files(here("data", "nbn_temp"), full.names = TRUE) %>%
+  lapply(read_csv, show_col_types = FALSE) %>%
   bind_rows()
-
-# Loop over all species and combine into one dataframe
-# We use bind_rows straight away; 'scientificName' is already in the data
-#all_occurrences <- lapply(species_list, get_nbn_occ) %>%
-#  bind_rows()
-
-# Quick check of what we got
-print(table(all_occurrences$scientificName))
-
 
 # 4. DATA CLEANING -----------------------------------------------------------
 # Filter 1: Basic Coordinates
-data_initial <- all_occurrences %>%
+data_initial <- all_occurances %>%
   filter(
     !is.na(decimalLatitude),
     !is.na(decimalLongitude)
@@ -209,7 +182,6 @@ nbn_gridref <- clean_3 %>%
   select(-gr_clean, -letters, -digits, -n_digits, -half_len, -easting_1km, -northing_1km)
 
 
-head(nbn_gridref$gridReference)
 
 # 5. SAVE
 write.csv(nbn_gridref, "nbn_occurrences_cleaned.csv", row.names = FALSE)

@@ -1,11 +1,11 @@
 library(readr)
 library(dplyr)
+library(here)
 
-setwd("/home/kl909/Documents/NE_postdoc/my_scripts")
 
 # read in gbif and nbn filtered dataframes
-gbif_data <- read_csv("gbif_final_data.csv")
-nbn_data  <- read_csv("nbn_final_data.csv")
+gbif_data <- read_csv(here("gbif_final_data.csv"))
+nbn_data  <- read_csv(here("nbn_final_data.csv"))
 
 # merge datasets
 all_records <- bind_rows(gbif_data, nbn_data)

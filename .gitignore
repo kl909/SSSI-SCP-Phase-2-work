@@ -1,0 +1,14 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Ignore all CSV files
+*.csv
+
+# Ignore the specific temp folder
+data/
+full_panthon_test/data/
+
+# Ignore temporary lock files from Excel/LibreOffice
+.~lock.*

@@ -15,5 +15,13 @@ all_records <- bind_rows(gbif_data, nbn_data)
 final_unique_data <- all_records %>%
   distinct(species, gridReference, eventDate)
 
+# read in Critchlow species which have already been modeled
+critchlow_data <- read_csv(here("critchlow_species.csv"))
+
+# remove any species from final_unique_data which are listed in critchlow
+final_unique_data <- all_records %>%
+  distinct(species, gridReference, eventDate) %>%
+  anti_join(critchlow_data, by = "species")
+
 # save to csv
 write.csv(final_unique_data, "merged_data.csv", row.names = FALSE)

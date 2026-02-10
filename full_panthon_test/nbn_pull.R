@@ -19,6 +19,7 @@ species_list <- pantheon_data %>%
   unique() %>%
   na.omit
 
+
 ##### 2. create directory 
 dir.create(here("data", "nbn_temp"), recursive = TRUE, showWarnings = FALSE)
 

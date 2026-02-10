@@ -12,46 +12,66 @@ library(here)
 # Pantheon species list
 pantheon_data <- read_csv(here("pantheon_w2_species_list.csv"))
 
+
 # Pull species from Pantheon dataframe
 species_list <- pantheon_data %>%
   pull(Species) %>%
   unique()
 
-# create function to get all GB ocurrences since 1970 for one species
 get_species_occ <- function(species_name, country = "GB", year = "1970,*") {
-  # get the taxon key from GBIF
-  key <- name_backbone(species_name)$usageKey
   
+  # 1. Get the taxon key
+  key <- name_backbone(species_name)$usageKey
   if (is.null(key)) {
     warning(paste("No taxonKey found for", species_name))
     return(NULL)
   }
   
-  # get the data for one
-  start <- 0
-  limit <- 50000  # maximum per occ_search
-  all_data <- list()
+  # 2. CHECK THE COUNT (whether under 100k or not)
+  total_count <- occ_count(taxonKey = key, country = country, year = year)
+  message(paste(species_name, "has", total_count, "records."))
   
-  repeat {
-    res <- occ_search(
-      taxonKey = key,
-      country = country,
-      year = year,
-      limit = limit,
-      start = start
+  # 3. DECIDE METHOD
+  if (total_count < 100000) {
+    # --- METHOD A: Your existing loop for small/medium datasets ---
+    message("Using occ_search method...")
+    start <- 0
+    limit <- 50000 
+    all_data <- list()
+    
+    repeat {
+      res <- occ_search(taxonKey = key, country = country, year = year,
+                        limit = limit, start = start)
+      if (length(res$data) == 0 || nrow(res$data) == 0) break
+      all_data[[length(all_data) + 1]] <- res$data
+      if (nrow(res$data) < limit) break 
+      start <- start + limit
+    }
+    return(do.call(rbind, all_data))
+    
+  } else {
+    # --- METHOD B: The "Download" method for >100k (Colleague's logic) ---
+    message("Switching to Download method (this will take a few minutes)...")
+    
+    # This triggers the request on GBIF servers
+    dl_request <- occ_download(
+      pred("taxonKey", key),
+      pred("country", country),
+      pred("year", year),
+      user = Sys.getenv("GBIF_USER"), 
+      pwd = Sys.getenv("GBIF_PWD"), 
+      email = Sys.getenv("GBIF_EMAIL")
     )
     
-    if (length(res$data) == 0) break
+    # Wait for the file to be prepared (Important!)
+    occ_download_wait(dl_request)
     
-    all_data[[length(all_data) + 1]] <- res$data
+    # Download and Import
+    res <- occ_download_get(dl_request) %>% 
+      occ_download_import()
     
-    if (nrow(res$data) < limit) break  # last page
-    
-    start <- start + limit
+    return(res)
   }
-  
-  # Combine all pages
-  do.call(rbind, all_data)
 }
 
 ##### end of function

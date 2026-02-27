@@ -49,23 +49,23 @@ paste(numThreads, "threads used") %>%
 ### SPATIAL DATA
 
 # Scaling parameters
-load("data/charles_data/Data/Spatial_data/DataForInlabru/scalingParams.RData")
+load("data/spatial_data/scalingParams.RData")
 
 # SpatRasters
-for (i in list.files("data/charles_data/Data/Spatial_data/DataForInlabru/spatRaster",
+for (i in list.files("data/spatial_data/rasters/",
                      pattern =  "\\.tif$")) {
   
   assign(gsub(".tif", "", i),
-         rast(paste0("data/charles_data/Data/Spatial_data/DataForInlabru/spatRaster/",
+         rast(paste0("data/spatial_data/rasters/",
                      i))) 
 }
 
 # SpatVectors
-for (i in list.files("data/charles_data/Data/Spatial_data/DataForInlabru/spatVector",
+for (i in list.files("data/spatial_data/vectors/",
                      pattern =  "\\.shp$")) {
   
   assign(gsub(".shp", "", i),
-         vect(paste0("data/charles_data/Data/Spatial_data/DataForInlabru/spatVector/",
+         vect(paste0("data/spatial_data/vectors/",
                      i)))
 }
 
@@ -121,7 +121,7 @@ covarValues <- dplyr::select(as.data.frame(visitDataSpatial), iYear, presence, w
 
 # Loop through spatial (random) variables
 for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
-             "coverBF_scaled", "coverCF_scaled", "connW_scaled")) { # REPLACE SOILM_GRP AND THIS LINE WITH RIVER VARIABLES
+             "order1_length", "order2_length", "order3_length", "order10_area")) {
   # LENGTH OF ORDER 1, LENGTH OF ORDER 2, LENGTH OF ORDER 3, AREA OF STANDING WATER
   
   # Get covariate i spatRaster (each layer is for time period iYear)

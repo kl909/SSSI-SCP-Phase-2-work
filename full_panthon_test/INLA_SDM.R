@@ -12,7 +12,7 @@ library(gridExtra)
 # SET PARAMETERS ---------------------------------------
 
 # Organise raw data taxa groups
-dataWET <- c( "Invertebrates", "Vertebrates", "Plants" )
+dataWET <- c( "Invertebrates", "Vertebrates", "Plants" ) # uncertain what this is doing for my data
 
 
 # List range of years used for species records
@@ -89,7 +89,7 @@ unlink(tempFile)
 # PROCESS COVARIATES -----------------------------------
 
 # Load example species if using
-visitDataSpatial <- readRDS("../Data/Species_data/example_species.Rds") # CHANGE TO MY FILTERED SPECIES DATA
+visitDataSpatial <- readRDS("data/species_data/final_data.rds") # CHANGE TO MY FILTERED SPECIES DATA
 
 # CREATE WEEK COVARIATE
 

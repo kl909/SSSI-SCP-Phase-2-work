@@ -40,7 +40,7 @@ final_dataset <- formatted_presence %>% #This expands the data so every Survey (
   mutate(numRecords = max(numRecords, na.rm = TRUE)) %>%
   ungroup()
 
-saveRDS(final_dataset, "final_data.rds")
+saveRDS(final_dataset, "final_data.rds", compress = FALSE)
 write.csv(final_dataset, "final_data_2.csv", row.names = FALSE)
 
 

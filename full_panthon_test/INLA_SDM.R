@@ -8,6 +8,7 @@ library(BRCmap)
 library(ggplot2)
 library(grid)
 library(gridExtra)
+library(here)
 
 # SET PARAMETERS ---------------------------------------
 
@@ -119,6 +120,27 @@ visitDataSpatial <- visitDataSpatial %>%
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
 covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week)
 
+## [KL] Match visitDataSpatial coordinates (m) to charles' rasters (km) 
+visitDataSpatial <- visitDataSpatial %>%
+  mutate(
+    x = x / 10,
+    y = y / 10
+  )
+
+## [KL] extract xy from visitDataSpatial so there is just a 2 column dataframe for the following loop
+coords_matrix <- as.matrix(visitDataSpatial[, c("x", "y")]) 
+
+## [KL] my raster projections need to match Charles' unknown CRS
+crs(order1_length) <- crs(GDD5_grp)
+crs(order2_length) <- crs(GDD5_grp)
+crs(order3_length) <- crs(GDD5_grp)
+crs(order10_area) <- crs(GDD5_grp)
+
+order1_length <- terra::resample(order1_length, GDD5_grp, method = "bilinear")
+order2_length <- terra::resample(order2_length, GDD5_grp, method = "bilinear")
+order3_length <- terra::resample(order3_length, GDD5_grp, method = "bilinear")
+order10_area <- terra::resample(order10_area, GDD5_grp, method = "bilinear")
+
 # Loop through spatial (random) variables
 for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
              "order1_length", "order2_length", "order3_length", "order10_area")) {
@@ -128,7 +150,7 @@ for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
   cov_R <- get(i)
   
   # Extract values for all iYear layers and add to beginning of data frame using species records
-  covarValues <- terra::extract(cov_R, visitDataSpatial, ID = FALSE) %>% #THIS IS EXPECTING X Y COORDINATES
+  covarValues <- terra::extract(cov_R, coords_matrix) %>% # [KL] I removed ,ID = FALSE from end
     cbind(covarValues) # Add existing data frame onto end
   
   # Drop now redundant columns from first columns

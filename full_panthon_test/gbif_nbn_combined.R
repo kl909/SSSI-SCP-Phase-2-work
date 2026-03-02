@@ -15,6 +15,7 @@ all_records <- bind_rows(gbif_data, nbn_data)
 final_unique_data <- all_records %>%
   distinct(species, gridReference, eventDate)
 
+
 # read in Critchlow species which have already been modeled
 critchlow_data <- read_csv(here("critchlow_species.csv"))
 

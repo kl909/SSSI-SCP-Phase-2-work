@@ -117,7 +117,7 @@ visitDataSpatial <- visitDataSpatial %>%
 ### Create data frame of covariate values at visit locations
 
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
-covarValues <- dplyr::select(as.data.frame(visitDataSpatial), iYear, presence, week)
+covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week)
 
 # Loop through spatial (random) variables
 for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
@@ -128,7 +128,7 @@ for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
   cov_R <- get(i)
   
   # Extract values for all iYear layers and add to beginning of data frame using species records
-  covarValues <- terra::extract(cov_R, visitDataSpatial, ID = FALSE) %>%
+  covarValues <- terra::extract(cov_R, visitDataSpatial, ID = FALSE) %>% #THIS IS EXPECTING X Y COORDINATES
     cbind(covarValues) # Add existing data frame onto end
   
   # Drop now redundant columns from first columns

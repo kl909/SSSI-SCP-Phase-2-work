@@ -111,7 +111,7 @@ unlink(tempFile)
 # PROCESS COVARIATES -----------------------------------
 
 # Load example species if using
-visitDataSpatial <- readRDS("data/species_data/final_data.rds") # MY FILTERED SPECIES DATA
+visitDataSpatial <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECIES DATA
 # remember Charles loads in one species at a time, whereas this file is for all species
 
 # CREATE WEEK COVARIATE
@@ -142,12 +142,6 @@ visitDataSpatial <- visitDataSpatial %>%
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
 covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week)
 
-## [KL] Match visitDataSpatial coordinate resolution (m) to charles' rasters (km) 
-visitDataSpatial <- visitDataSpatial %>%
-  mutate(
-    x = x / 10,
-    y = y / 10
-  )
 
 ## [KL] extract xy from visitDataSpatial so there is just a 2 column dataframe for the following loop
 #coords_matrix <- as.matrix(visitDataSpatial[, c("x", "y")]) 
@@ -161,11 +155,28 @@ for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
   cov_R <- get(i)
   
   # Extract values for all iYear layers and add to beginning of data frame using species records
-  covarValues <- terra::extract(cov_R, visitDataSpatial[, c("x", "y")]) %>% # [KL] I removed ,ID = FALSE from end
-    cbind(covarValues) # Add existing data frame onto end
+  #covarValues <- terra::extract(cov_R, visitDataSpatial[, c("x", "y")]) %>% # [KL] I removed ,ID = FALSE from end
+    #cbind(covarValues) # Add existing data frame onto end
   
   # Drop now redundant columns from first columns
-  covarValues <- covarValues[, -1] # [KL] changed from covarValues <- covarValues[, -c(1,2)]
+  #covarValues <- covarValues[, -1] # [KL] changed from covarValues <- covarValues[, -c(1,2)]
+  
+  pts <- terra::vect(visitDataSpatial[, c("x", "y")], 
+                     geom = c("x", "y"), 
+                     crs = bng)
+  
+  # 2. Extract (Using the spatial object 'pts' is much safer than a matrix)
+  # This returns a data frame with [ID, values]
+  temp_extract <- terra::extract(cov_R, pts)
+  
+  # 3. Create a clean 1-column data frame with the correct name
+  # This stops the "NA.1", "NA.2" naming issue
+  new_col <- data.frame(temp_extract[, 2])
+  colnames(new_col) <- i
+  
+  # 4. Bind it to your master table
+  covarValues <- cbind(new_col, covarValues)
+  
   
 }
 

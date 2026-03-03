@@ -4,6 +4,7 @@ library(here)
 library(tidyr)
 library(rnrfa)
 library(lubridate)
+library(terra)
 
 # read in the data
 data <- read_csv(here("merged_data.csv"))
@@ -61,6 +62,12 @@ final_dataset <- final_dataset %>%
     y = y + 500
   )
 
+final_dataset <- final_dataset %>%
+  mutate(
+    x = x / 10,
+    y = y / 10
+  )
+
 # final formatting to match Charles'
 # get year column from the date column
 final_dataset <- final_dataset %>%
@@ -78,7 +85,20 @@ final_dataset <- final_dataset %>%
 final_dataset <- final_dataset %>%
   select(monad, date, year, visit, species, presence, numRecords, visitLength, x, y)
 
-saveRDS(final_dataset, "data/species_data/final_data.rds", compress = FALSE)
+# save as a csv for easy checking
 write.csv(final_dataset, "final_data_2.csv", row.names = FALSE)
+
+# convert dataframe to a SpatVector
+final_vector <- vect(final_dataset, 
+                     geom = c("x", "y"), 
+                     crs = "EPSG:27700",
+                     keepgeom = TRUE)
+
+# save as a SpatVector
+saveRDS(wrap(final_vector), here("data/species_data/final_vector.rds"))
+
+
+saveRDS(final_dataset, here("data/species_data/final_data.rds"), compress = FALSE)
+
 
 

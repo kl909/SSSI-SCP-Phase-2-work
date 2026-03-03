@@ -141,10 +141,11 @@ visitDataSpatial <- visitDataSpatial %>%
 ### Create data frame of covariate values at visit locations
 
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
-covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week)
+covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week, species)
 
 # Loop through spatial (random) variables
-for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp"
+for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
+             "order1_length", "order2_length", "order3_length", "order10_area"
              )) {
   # LENGTH OF ORDER 1, LENGTH OF ORDER 2, LENGTH OF ORDER 3, AREA OF STANDING WATER
   

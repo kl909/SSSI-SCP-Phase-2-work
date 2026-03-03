@@ -80,16 +80,6 @@ for (i in list.files("data/spatial_data/vectors/",
                      i)))
 }
 
-## [KL] my raster projections need to match Charles' unknown CRS
-crs(order1_length) <- crs(GDD5_grp)
-crs(order2_length) <- crs(GDD5_grp)
-crs(order3_length) <- crs(GDD5_grp)
-crs(order10_area) <- crs(GDD5_grp)
-
-order1_length <- terra::resample(order1_length, GDD5_grp, method = "bilinear")
-order2_length <- terra::resample(order2_length, GDD5_grp, method = "bilinear")
-order3_length <- terra::resample(order3_length, GDD5_grp, method = "bilinear")
-order10_area <- terra::resample(order10_area, GDD5_grp, method = "bilinear")
 
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
@@ -137,46 +127,36 @@ visitDataSpatial <- visitDataSpatial %>%
 # EXTRACT COVARIATES FOR EFFECTS PLOT -------------------------------
 # Need to extract spatial covariates over species records for plots
 
+# [KL} convert points from visitDataSpatial to match the rasters
+#raster_crs <- crs(GDD5_grp)
+#coords_km <- crds(visitDataSpatial) / 1000
+
+#temp_vect <- vect(coords_km, crs = raster_crs)
+
+#values(temp_vect) <- values(visitDataSpatial)
+
+#visitDataSpatial <- temp_vect
+
+
 ### Create data frame of covariate values at visit locations
 
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
 covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week)
 
-
-## [KL] extract xy from visitDataSpatial so there is just a 2 column dataframe for the following loop
-#coords_matrix <- as.matrix(visitDataSpatial[, c("x", "y")]) 
-
 # Loop through spatial (random) variables
-for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
-             "order1_length", "order2_length", "order3_length", "order10_area")) {
+for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp"
+             )) {
   # LENGTH OF ORDER 1, LENGTH OF ORDER 2, LENGTH OF ORDER 3, AREA OF STANDING WATER
   
   # Get covariate i spatRaster (each layer is for time period iYear)
   cov_R <- get(i)
   
-  # Extract values for all iYear layers and add to beginning of data frame using species records
-  #covarValues <- terra::extract(cov_R, visitDataSpatial[, c("x", "y")]) %>% # [KL] I removed ,ID = FALSE from end
-    #cbind(covarValues) # Add existing data frame onto end
+  temp_ext <- terra::extract(cov_R, visitDataSpatial)
+    
+  new_data <- temp_ext[, 2, drop = FALSE]
+  colnames(new_data) <- i
   
-  # Drop now redundant columns from first columns
-  #covarValues <- covarValues[, -1] # [KL] changed from covarValues <- covarValues[, -c(1,2)]
-  
-  pts <- terra::vect(visitDataSpatial[, c("x", "y")], 
-                     geom = c("x", "y"), 
-                     crs = bng)
-  
-  # 2. Extract (Using the spatial object 'pts' is much safer than a matrix)
-  # This returns a data frame with [ID, values]
-  temp_extract <- terra::extract(cov_R, pts)
-  
-  # 3. Create a clean 1-column data frame with the correct name
-  # This stops the "NA.1", "NA.2" naming issue
-  new_col <- data.frame(temp_extract[, 2])
-  colnames(new_col) <- i
-  
-  # 4. Bind it to your master table
-  covarValues <- cbind(new_col, covarValues)
-  
+  covarValues <- cbind(new_data, covarValues)
   
 }
 

@@ -62,11 +62,11 @@ final_dataset <- final_dataset %>%
     y = y + 500
   )
 
-final_dataset <- final_dataset %>%
-  mutate(
-    x = x / 10,
-    y = y / 10
-  )
+#final_dataset <- final_dataset %>%
+#  mutate(
+#    x = x / 10,
+#    y = y / 10
+#  )
 
 # final formatting to match Charles'
 # get year column from the date column
@@ -86,7 +86,7 @@ final_dataset <- final_dataset %>%
   select(monad, date, year, visit, species, presence, numRecords, visitLength, x, y)
 
 # save as a csv for easy checking
-write.csv(final_dataset, "final_data_2.csv", row.names = FALSE)
+write.csv(final_dataset, here("final_data_2.csv"), row.names = FALSE)
 
 # convert dataframe to a SpatVector
 final_vector <- vect(final_dataset, 

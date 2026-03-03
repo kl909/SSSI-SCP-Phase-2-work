@@ -21,7 +21,7 @@ range = c(1970,2026)
 
 
 # Set batch number/species (as.numeric(args[1])) and taxa group (arg[2]), specified array in job script
-# This is for viking
+# This is for viking & when if I were to have a file for every single species separately
 # e.g. RScript MyScript.R 104 birds
 args <- commandArgs(trailingOnly = TRUE)
 batchN <- as.numeric(args[1]) # e.g. will grab "104"
@@ -48,6 +48,16 @@ paste(numThreads, "threads used") %>%
 # DATA FILES ------------------------------------------
 
 ### SPATIAL DATA
+# SpatRasters
+#-- connW.tif   : woodland connectivity in Amperes - DON'T NEED
+#-- coverBF.tif : broadleaf woodland proportion cover of each 1x1km cell - DON'T NEED
+#-- coverCF.tif : coniferous woodland proportion cover of each 1x1km cell - DON'T NEED
+#-- GDD5.tif    : growing degree days - ???
+#-- RAIN.tif    : annual precipitation - NEED
+#-- soilM.tif   : soil moisture - NEED
+#-- tasCV.tif   : temperature seasonality - NEED
+#-- UK_R.tif    : rasterised UK boundary - NEED
+#-- WMIN.tif    : winter cold - ???
 
 # Scaling parameters
 load("data/spatial_data/scalingParams.RData")
@@ -70,6 +80,17 @@ for (i in list.files("data/spatial_data/vectors/",
                      i)))
 }
 
+## [KL] my raster projections need to match Charles' unknown CRS
+crs(order1_length) <- crs(GDD5_grp)
+crs(order2_length) <- crs(GDD5_grp)
+crs(order3_length) <- crs(GDD5_grp)
+crs(order10_area) <- crs(GDD5_grp)
+
+order1_length <- terra::resample(order1_length, GDD5_grp, method = "bilinear")
+order2_length <- terra::resample(order2_length, GDD5_grp, method = "bilinear")
+order3_length <- terra::resample(order3_length, GDD5_grp, method = "bilinear")
+order10_area <- terra::resample(order10_area, GDD5_grp, method = "bilinear")
+
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
 # different tasks tring to read/write at same time 
@@ -90,7 +111,8 @@ unlink(tempFile)
 # PROCESS COVARIATES -----------------------------------
 
 # Load example species if using
-visitDataSpatial <- readRDS("data/species_data/final_data.rds") # CHANGE TO MY FILTERED SPECIES DATA
+visitDataSpatial <- readRDS("data/species_data/final_data.rds") # MY FILTERED SPECIES DATA
+# remember Charles loads in one species at a time, whereas this file is for all species
 
 # CREATE WEEK COVARIATE
 
@@ -120,7 +142,7 @@ visitDataSpatial <- visitDataSpatial %>%
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
 covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week)
 
-## [KL] Match visitDataSpatial coordinates (m) to charles' rasters (km) 
+## [KL] Match visitDataSpatial coordinate resolution (m) to charles' rasters (km) 
 visitDataSpatial <- visitDataSpatial %>%
   mutate(
     x = x / 10,
@@ -128,18 +150,7 @@ visitDataSpatial <- visitDataSpatial %>%
   )
 
 ## [KL] extract xy from visitDataSpatial so there is just a 2 column dataframe for the following loop
-coords_matrix <- as.matrix(visitDataSpatial[, c("x", "y")]) 
-
-## [KL] my raster projections need to match Charles' unknown CRS
-crs(order1_length) <- crs(GDD5_grp)
-crs(order2_length) <- crs(GDD5_grp)
-crs(order3_length) <- crs(GDD5_grp)
-crs(order10_area) <- crs(GDD5_grp)
-
-order1_length <- terra::resample(order1_length, GDD5_grp, method = "bilinear")
-order2_length <- terra::resample(order2_length, GDD5_grp, method = "bilinear")
-order3_length <- terra::resample(order3_length, GDD5_grp, method = "bilinear")
-order10_area <- terra::resample(order10_area, GDD5_grp, method = "bilinear")
+#coords_matrix <- as.matrix(visitDataSpatial[, c("x", "y")]) 
 
 # Loop through spatial (random) variables
 for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
@@ -150,11 +161,11 @@ for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
   cov_R <- get(i)
   
   # Extract values for all iYear layers and add to beginning of data frame using species records
-  covarValues <- terra::extract(cov_R, coords_matrix) %>% # [KL] I removed ,ID = FALSE from end
+  covarValues <- terra::extract(cov_R, visitDataSpatial[, c("x", "y")]) %>% # [KL] I removed ,ID = FALSE from end
     cbind(covarValues) # Add existing data frame onto end
   
   # Drop now redundant columns from first columns
-  covarValues <- covarValues[, -c(1,2)]
+  covarValues <- covarValues[, -1] # [KL] changed from covarValues <- covarValues[, -c(1,2)]
   
 }
 

@@ -81,7 +81,11 @@ for (i in list.files("data/spatial_data/vectors/",
 }
 
 # change resolution of river rasters using climate rasters
-
+ext(order1_length)
+ext(order2_length)
+ext(order3_length)
+ext(order10_area)
+ext(GDD5_grp)
 
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
@@ -102,7 +106,7 @@ unlink(tempFile)
 
 # PROCESS COVARIATES -----------------------------------
 
-# Load example species if using
+# Load species data
 master_data <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECIES DATA
 # remember Charles loads in one species at a time, whereas this file is for all species
 
@@ -158,72 +162,29 @@ for (target_species in all_species_list) {
                   all_of(clim_vars) 
                   )
   
+  # Process climate covariate values for rug plot
+  climCovarValues <- covarValues %>%
+    dplyr::select(any_of(names(.)), -any_of(-c(order1_length, order2_length, order3_length, order10_area))) %>%
+    gather(randomEff, value, 3:NCOL(.))
+  
+  # count number of each quantile value
+  climCovarValues <- climCovarValues %>%
+    group_by(randomEff, presence, value) %>%
+    mutate(count = n()) %>%
+    ungroup() %>%
+    distinct()
+  
   # save results
   tidy_name <- gsub(" ", "_", target_species)
+  
+  # save wide data
   saveRDS(covarValues, paste0("data/output/covars_", tidy_name, ".rds"))
+  
+  # save the long summary data
+  saveRDS(climCovarValues, paste0("data/output/clim_summary_", tidy_name, ".rds"))
 }
 
 -----------------------------------------------------------------------
-
-# CREATE WEEK COVARIATE
-
-### Add week of year column ( will be included in model as covariate)
-# N.B. Week of the year as decimal number (01--53) as defined in ISO 8601.
-# If the week (starting on Monday) containing 1 January has four or more 
-# days in the new year, then it is considered week 1. Otherwise, 
-# it is the last week of the previous year, and the next week is week 1.
-#visitDataSpatial$week <- visitDataSpatial$date %>%
-#  strftime(., format = "%V") %>%
-#  as.numeric(.)
-
-# CREATE EFFORT COVARIATE
-
-# Convert factor levels to dummy variables
-#visitDataSpatial <- visitDataSpatial %>%
-#  model.matrix(object = ~visitLength) %>%
-#  as.data.frame() %>%
-#  dplyr::select(-1) %>%
-#  cbind(visitDataSpatial, .)
-
-# EXTRACT COVARIATES FOR EFFECTS PLOT -------------------------------
-# Need to extract spatial covariates over species records for plots
-
-### Create data frame of covariate values at visit locations
-
-# Create a base data frame with iYear, presence and week (non-spatial) to build up from
-#covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week, species)
-
-# Loop through spatial (random) variables
-#for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp"#,
-             #"order1_length", "order2_length", "order3_length", "order10_area"
-#             )) {
-  # LENGTH OF ORDER 1, LENGTH OF ORDER 2, LENGTH OF ORDER 3, AREA OF STANDING WATER
-  
-  # Get covariate i spatRaster (each layer is for time period iYear)
-#  cov_R <- get(i)
-  
-#  temp_ext <- terra::extract(cov_R, visitDataSpatial)
-    
-#  new_data <- temp_ext[, 2, drop = FALSE]
-#  colnames(new_data) <- i
-  
-#  covarValues <- cbind(new_data, covarValues)
-  
-#}
-
-### Process climate covariate values for rug plot
-
-# Remove cover and climate variables and convert to long format
-climCovarValues <-  dplyr::select(covarValues,
-                                  -c(coverBF, coverCF, connW)) %>%
-  gather(randomEff, value, 3:NCOL(.))
-
-# Count number of each quantile value for each variable for presence/absence separately
-climCovarValues <- climCovarValues %>%
-  group_by(randomEff, presence, value) %>%
-  mutate(count = n()) %>%
-  ungroup %>%
-  distinct
 
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
 

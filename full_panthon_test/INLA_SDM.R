@@ -80,6 +80,8 @@ for (i in list.files("data/spatial_data/vectors/",
                      i)))
 }
 
+# change resolution of river rasters using climate rasters
+
 
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
@@ -101,8 +103,67 @@ unlink(tempFile)
 # PROCESS COVARIATES -----------------------------------
 
 # Load example species if using
-visitDataSpatial <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECIES DATA
+master_data <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECIES DATA
 # remember Charles loads in one species at a time, whereas this file is for all species
+
+# [KL] identify which species (mimicking Charles' 'batchN')
+all_species_list <- unique(master_data$species)
+
+# [KL] loop over covariate script for each species
+for (target_species in all_species_list) {
+  
+  temp_df <- as.data.frame(master_data)
+  
+  visitDataSpatial <- temp_df %>%
+    filter(species == target_species) %>% 
+    group_by(visit) %>% 
+    # If a visit has both a 1 and a 0 for some reason, keep the 1
+    slice(which.max(presence)) %>% 
+    ungroup()
+   
+  # generate week covariate 
+  visitDataSpatial$week <- visitDataSpatial$date %>%
+    strftime(., format = "%V") %>%
+    as.numeric(.)
+  
+  # convert back to spatvector
+  visitDataSpatial_Vect <- vect(visitDataSpatial, 
+                                geom = c("x", "y"), 
+                                crs = crs(master_data))
+  
+  covarValues <- visitDataSpatial
+  
+  clim_vars <- c("GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
+                 "order1_length", "order2_length", "order3_length", "order10_area"
+  )
+  
+  for (i in clim_vars) {
+    
+    cov_R <- get(i)
+    
+    # Extract values from the SpatRaster (cov_R) at the species locations
+    temp_ext <- terra::extract(cov_R, visitDataSpatial_Vect)
+    
+    # Ensure we take the column that matches the data, not the ID column
+    new_data <- temp_ext[, 2, drop = FALSE]
+    colnames(new_data) <- i
+    
+    covarValues <- cbind(new_data, covarValues)
+  }
+  
+  # tidy up columns
+  covarValues <- covarValues %>%
+    dplyr::select(presence,
+                  week,
+                  all_of(clim_vars) 
+                  )
+  
+  # save results
+  tidy_name <- gsub(" ", "_", target_species)
+  saveRDS(covarValues, paste0("data/output/covars_", tidy_name, ".rds"))
+}
+
+-----------------------------------------------------------------------
 
 # CREATE WEEK COVARIATE
 
@@ -111,55 +172,44 @@ visitDataSpatial <- readRDS("data/species_data/final_vector.rds") # MY FILTERED 
 # If the week (starting on Monday) containing 1 January has four or more 
 # days in the new year, then it is considered week 1. Otherwise, 
 # it is the last week of the previous year, and the next week is week 1.
-visitDataSpatial$week <- visitDataSpatial$date %>%
-  strftime(., format = "%V") %>%
-  as.numeric(.)
+#visitDataSpatial$week <- visitDataSpatial$date %>%
+#  strftime(., format = "%V") %>%
+#  as.numeric(.)
 
 # CREATE EFFORT COVARIATE
 
 # Convert factor levels to dummy variables
-visitDataSpatial <- visitDataSpatial %>%
-  model.matrix(object = ~visitLength) %>%
-  as.data.frame() %>%
-  dplyr::select(-1) %>%
-  cbind(visitDataSpatial, .)
+#visitDataSpatial <- visitDataSpatial %>%
+#  model.matrix(object = ~visitLength) %>%
+#  as.data.frame() %>%
+#  dplyr::select(-1) %>%
+#  cbind(visitDataSpatial, .)
 
 # EXTRACT COVARIATES FOR EFFECTS PLOT -------------------------------
 # Need to extract spatial covariates over species records for plots
 
-# [KL} convert points from visitDataSpatial to match the rasters
-#raster_crs <- crs(GDD5_grp)
-#coords_km <- crds(visitDataSpatial) / 1000
-
-#temp_vect <- vect(coords_km, crs = raster_crs)
-
-#values(temp_vect) <- values(visitDataSpatial)
-
-#visitDataSpatial <- temp_vect
-
-
 ### Create data frame of covariate values at visit locations
 
 # Create a base data frame with iYear, presence and week (non-spatial) to build up from
-covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week, species)
+#covarValues <- dplyr::select(as.data.frame(visitDataSpatial), presence, week, species)
 
 # Loop through spatial (random) variables
-for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
-             "order1_length", "order2_length", "order3_length", "order10_area"
-             )) {
+#for (i in c( "GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp"#,
+             #"order1_length", "order2_length", "order3_length", "order10_area"
+#             )) {
   # LENGTH OF ORDER 1, LENGTH OF ORDER 2, LENGTH OF ORDER 3, AREA OF STANDING WATER
   
   # Get covariate i spatRaster (each layer is for time period iYear)
-  cov_R <- get(i)
+#  cov_R <- get(i)
   
-  temp_ext <- terra::extract(cov_R, visitDataSpatial)
+#  temp_ext <- terra::extract(cov_R, visitDataSpatial)
     
-  new_data <- temp_ext[, 2, drop = FALSE]
-  colnames(new_data) <- i
+#  new_data <- temp_ext[, 2, drop = FALSE]
+#  colnames(new_data) <- i
   
-  covarValues <- cbind(new_data, covarValues)
+#  covarValues <- cbind(new_data, covarValues)
   
-}
+#}
 
 ### Process climate covariate values for rug plot
 

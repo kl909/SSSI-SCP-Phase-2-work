@@ -118,7 +118,7 @@ for (target_species in all_species_list) {
   
   temp_df <- as.data.frame(master_data)
   
-  visitDataSpatial <- temp_df %>%
+  visitDataSpatial_df <- temp_df %>%
     filter(species == target_species) %>% 
     group_by(visit) %>% 
     # If a visit has both a 1 and a 0 for some reason, keep the 1
@@ -126,16 +126,16 @@ for (target_species in all_species_list) {
     ungroup()
    
   # generate week covariate 
-  visitDataSpatial$week <- visitDataSpatial$date %>%
+  visitDataSpatial_df$week <- visitDataSpatial_df$date %>%
     strftime(., format = "%V") %>%
     as.numeric(.)
   
   # convert back to spatvector
-  visitDataSpatial_Vect <- vect(visitDataSpatial, 
+  visitDataSpatial <- vect(visitDataSpatial_df, 
                                 geom = c("x", "y"), 
                                 crs = crs(master_data))
   
-  covarValues <- visitDataSpatial
+  covarValues <- visitDataSpatial_df
   
   clim_vars <- c("GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
                  "order1_length", "order2_length", "order3_length", "order10_area"
@@ -146,7 +146,7 @@ for (target_species in all_species_list) {
     cov_R <- get(i)
     
     # Extract values from the SpatRaster (cov_R) at the species locations
-    temp_ext <- terra::extract(cov_R, visitDataSpatial_Vect)
+    temp_ext <- terra::extract(cov_R, visitDataSpatial)
     
     # Ensure we take the column that matches the data, not the ID column
     new_data <- temp_ext[, 2, drop = FALSE]
@@ -163,9 +163,11 @@ for (target_species in all_species_list) {
                   )
   
   # Process climate covariate values for rug plot
+  clim_groups <- c("GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp")
+  
   climCovarValues <- covarValues %>%
-    dplyr::select(any_of(names(.)), -any_of(-c(order1_length, order2_length, order3_length, order10_area))) %>%
-    gather(randomEff, value, 3:NCOL(.))
+    dplyr::select(presence, week, all_of(clim_groups)) %>%
+    gather(randomEff, value, all_of(clim_groups))
   
   # count number of each quantile value
   climCovarValues <- climCovarValues %>%
@@ -189,7 +191,7 @@ for (target_species in all_species_list) {
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
 
 # Remove data frames no longer needed 
-rm(visitXY, rawDataUK, taxaData, visitData)
+rm(new_data, visitDataSpatial_df)
 
 # Garbage clean
 gc()

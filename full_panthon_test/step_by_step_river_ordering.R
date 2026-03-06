@@ -56,6 +56,44 @@ for (i in 1:50) {
     )
 }
 
+
+####### order 3
+# Identify nodes where two or more Order 2 rivers meet
+order3_birth_nodes <- net_ordered %>%
+  activate("edges") %>%
+  as_tibble() %>%
+  group_by(to) %>%
+  summarise(count_order2 = sum(order == 2)) %>%
+  filter(count_order2 >= 2) %>%
+  pull(to)
+
+# Assign Order 3 to edges starting at these junctions
+net_ordered <- net_ordered %>%
+  activate("edges") %>%
+  mutate(
+    order = ifelse(from %in% order3_birth_nodes, 3, order)
+  )
+
+# make sure order 3 rivers stay order 3
+# Push the Order 3 status downstream through simple nodes
+for (i in 1:50) {
+  # Find nodes that have an Order 3 river flowing INTO them
+  order3_nodes <- net_ordered %>%
+    activate("edges") %>%
+    as_tibble() %>%
+    filter(order == 3) %>%
+    pull(to) %>%
+    unique()
+  
+  # Update the edges: if it starts at an Order 3 node, it stays Order 3
+  net_ordered <- net_ordered %>%
+    activate("edges") %>%
+    mutate(
+      order = ifelse(from %in% order3_nodes, 3, order)
+    )
+}
+
+
 #------------------------------------------------
 rivers_final2 <- net_ordered %>%
   activate("edges") %>%

@@ -3,6 +3,7 @@ library(dplyr)
 library(tidygraph)
 library(sfnetworks)
 library(here)
+library(purrr)
 
 # 1. Import OS river data
 rivers <- st_read("../../data/os_rivers/data/WatercourseLink.shp")
@@ -19,6 +20,8 @@ node_status <- net %>%
   ) %>%
   as_tibble()
 
+
+
 # 4. Apply Order 1 and Order 2
 net_ordered <- net %>%
   activate("edges") %>%
@@ -32,6 +35,26 @@ net_ordered <- net %>%
     # - If in_degree >= 2, it's a junction (Order 2)
     order = ifelse(in_at_start >= 2, 2, 1)
   )
+
+# step for continuing order 2 rivers
+for (i in 1:50) {
+  # Get the 'to' node of every edge that is already Order 2
+  # this is vectorized and very fast
+  order2_nodes <- net_ordered %>%
+    activate("edges") %>%
+    as_tibble() %>%
+    filter(order == 2) %>%
+    pull(to) %>%
+    unique()
+  
+  # Update the edges: If an edge starts (from) at one of these nodes, 
+  # it becomes Order 2.
+  net_ordered <- net_ordered %>%
+    activate("edges") %>%
+    mutate(
+      order = ifelse(from %in% order2_nodes, 2, order)
+    )
+}
 
 #------------------------------------------------
 rivers_final2 <- net_ordered %>%

@@ -200,7 +200,18 @@ gc()
 # CREATE MESH -------------------------------------------------------
 
 # [KL] create simplifieed boundary of UK:
+uk_boundary_sf <- smoothUK %>%
+  aggregate(fact = 10) %>% 
+  as.polygons() %>%
+  st_as_sf() %>%
+  st_union()
 
+# [KL] convert to INLA format
+uk_boundary_sp <- as(uk_boundary_sf, "Spatial")
+
+# [KL] define km based BNG projection once
+crs_km <- st_crs(27700)$proj4string %>% 
+  gsub("units=m", "units=km", .)
 
 # Max edge is as a rule of thumb (range/3 to range/10)
 maxEdge <- estimated_range/5
@@ -209,14 +220,18 @@ maxEdge <- estimated_range/5
 recordCoords <- crds(visitDataSpatial) %>% 
   unique(.)
 
+# [KL] convert recordCoords to km
+recordCoords_km <- recordCoords / 1000
+
 # Create mesh (convert boundary to sp object as leads to best convergence)
-mesh <- inla.mesh.2d(boundary = st_as_sf(smoothUK) %>% as("Spatial"),
-                     loc = recordCoords,
+mesh <- inla.mesh.2d(boundary = uk_boundary_sp,
+                     loc = recordCoords_km,
                      max.edge = c(1,5) * maxEdge,
                      offset = c(1,2) * maxEdge, 
                      cutoff = maxEdge/2,
                      min.angle = 26,
-                     crs = gsub( "units=m", "units=km", st_crs(bng)$proj4string ))
+                     #crs = gsub( "units=m", "units=km", st_crs(bng)$proj4string )
+                     crs = crs_km)
 
 # FIT SPATIO-TEMPORAL MODEL ---------------------------------
 

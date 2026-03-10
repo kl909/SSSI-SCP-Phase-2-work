@@ -80,13 +80,6 @@ for (i in list.files("data/spatial_data/vectors/",
                      i)))
 }
 
-# change resolution of river rasters using climate rasters
-ext(order1_length)
-ext(order2_length)
-ext(order3_length)
-ext(order10_area)
-ext(GDD5_grp)
-
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
 # different tasks tring to read/write at same time 
@@ -155,6 +148,14 @@ for (target_species in all_species_list) {
     covarValues <- cbind(new_data, covarValues)
   }
   
+  # Remove rows where GDD5_grp s NA (outside the raster)
+  covarValues <- covarValues %>%
+    filter(!is.na(GDD5_grp))
+  
+  # Convert NAs in the river ordr columns to 0
+  covarValues <- covarValues %>%
+    mutate(across(starts_with("order"), ~replace_na(., 0)))
+  
   # tidy up columns
   covarValues <- covarValues %>%
     dplyr::select(presence,
@@ -186,17 +187,20 @@ for (target_species in all_species_list) {
   saveRDS(climCovarValues, paste0("data/output/clim_summary_", tidy_name, ".rds"))
 }
 
------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
 
 # Remove data frames no longer needed 
-rm(new_data, visitDataSpatial_df)
+#rm(new_data, visitDataSpatial_df)
 
 # Garbage clean
 gc()
 
 # CREATE MESH -------------------------------------------------------
+
+# [KL] create simplifieed boundary of UK:
+
 
 # Max edge is as a rule of thumb (range/3 to range/10)
 maxEdge <- estimated_range/5
@@ -217,8 +221,8 @@ mesh <- inla.mesh.2d(boundary = st_as_sf(smoothUK) %>% as("Spatial"),
 # FIT SPATIO-TEMPORAL MODEL ---------------------------------
 
 # Create indices -- NO TEMPORAL DIMENSION FOR US - MAKE SURE ONLY ONE YEAR
-iYear <- visitDataSpatial$iYear
-nYear <- length(unique(iYear))
+#iYear <- visitDataSpatial$iYear # iYear = 1
+#nYear <- length(unique(iYear)) # nYear = 1
 
 # Define spatial SPDE priors
 mySpace <- inla.spde2.pcmatern(
@@ -233,3 +237,590 @@ fixedHyper <- list( mean = 0,
 # Priors for random effects
 randomHyper <- list(theta = list(prior="pc.prec",
                                  param=c(0.5, 0.01)))
+
+# Set components
+inlabruCmp  <-  presence ~ 0 + Intercept(1) +
+  
+  GDD5(main = GDD5_grp,
+       #main_layer = iYear,
+       model = "rw2",
+       scale.model = TRUE,
+       hyper = randomHyper) +
+  WMIN(main = WMIN_grp,
+       #main_layer = iYear,
+       model = "rw2",
+       scale.model = TRUE,
+       hyper = randomHyper) +
+  tasCV(main = tasCV_grp,
+        #main_layer = iYear,
+        model = "rw2",
+        scale.model = TRUE,
+        hyper = randomHyper) +
+  RAIN(main = RAIN_grp,
+       #main_layer = iYear,
+       model = "rw2",
+       scale.model = TRUE,
+       hyper = randomHyper) +
+  soilM(main = soilM_grp,
+        #main_layer = iYear,
+        model = "rw2",
+        scale.model = TRUE,
+        hyper = randomHyper) +
+  order1(main = order1_legnth,
+          #main_layer = iYear,
+          model = "linear") +
+  order2(main = order2_length,
+          #main_layer = iYear,
+          model = "linear") +
+  order3(main = order3_legnth,
+               #main_layer = iYear,
+               model = "linear") +
+  order10(main = order10_area,
+            #main_layer = iYear,
+            model = "linear") +
+  
+  week(main = week,
+       model = "rw2",
+       cyclic = TRUE,
+       hyper = randomHyper) +
+  spaceTime(main = geometry, # this only space (no Time)
+            #group = iYear,
+            #ngroup = nYear,
+            model = mySpace,
+            control.group = list(model = "ar1",
+                                 hyper = ar1Hyper))
+
+# Fit model
+model <- bru(components = inlabruCmp,
+             family = "binomial",
+             control.family = list(link = "cloglog"),
+             data = st_as_sf(visitDataSpatial),
+             options=list(control.fixed = fixedHyper,
+                          control.inla= list(int.strategy='eb'),
+                          control.compute = list(waic = TRUE, dic = FALSE, cpo = TRUE),
+                          verbose = TRUE))
+
+# Assign model summary object and output
+modelSummary <- summary(model)
+
+# PREDICT -----------------------------------------
+# Create grid prediction pixels
+ppxl <- mask(UK_R, smoothUK) %>%
+  crop(.,smoothUK ) %>%
+  as.points %>%
+  st_as_sf
+
+# Create multi-time period prediction pixels
+#ppxlAll <- fm_cprod(ppxl, data.frame( iYear = seq_len(nYear)))
+
+# Predict using spatio-temporal model
+# ( N.B. excluding VISIT_LENGTH means including the reference factor level- long- which is what we want!)
+modelPred <- predict(model, 
+                     ppxl, 
+                     ~ data.frame(
+                       lambda =  1 - exp( -exp( spaceTime + # cloglog back transform
+                                                  soilM +
+                                                  WMIN +
+                                                  tasCV +
+                                                  GDD5 +
+                                                  RAIN +
+                                                  order1 +
+                                                  order2 +
+                                                  order3 +
+                                                  order10 +
+                                                  # Max value for week to predict over (removed later)
+                                                  max(model$summary.random$week$mean) + 
+                                                  Intercept ))),
+                     exclude = c("week")) 
+
+# MODEL EVALUATION --------------------------
+
+# SET PARAMETERS
+
+# Labels
+randomEffLabels <- c('GDD5' = "Growing degree days", 'RAIN' = "Annual precipiation",
+                     'soilM' = "Soil moisture", 'tasCV' = "Temperature seasonality",
+                     'week' = "Week of year" , 'WMIN' = "Winter minimum temperature")
+#timeLabels <- data.frame(label = c("1990 - 2000", "2015 -"), 
+#                         iYear = c("1", "2"))
+linearEffLabels <- c('order1' = "order 1 river length",
+                     'order2' = "order 2 river length",
+                     'order3' = "order 3 river length",
+                     'order10' = "order 10 lake area",
+                     'visitLengthSingle' = "Single record visit",
+                     'visitLengthShort' = "Short visit (2-3 records)")
+#intLabels <- c('BF_pred' = "Broadleaf ",
+#               'CF_pred' = "Coniferous")
+
+# Template raster for converting from sf to terra raster objects
+template_R <- st_as_stars(UK_R)
+template_R[[1]][1:ncell(template_R)] <- NA
+
+# CALCULATE LOGCPO
+
+logCPO_vect = log(model$cpo$cpo[model$cpo$cpo != 0])
+logCPO_vect = logCPO_vect[is.finite(logCPO_vect)]
+logCPO = round(-sum(logCPO_vect, na.rm = T), digits = 2)
+
+# NON-SPATIAL RANDOM EFFECTS PLOT
+### Create effects data frame
+
+# Extract random effects from model, and exclude spatial
+randomEff_df <- model$summary.random
+randomEff_df["spaceTime"] <- NULL
+
+# Add name of random effect to each dataframe in list
+randomEff_df <- imap(randomEff_df, ~mutate(.x, randomEff = .y))
+
+# Unlist, then rename and select quantile columns
+randomEff_df <- do.call(rbind, randomEff_df)%>%
+  rename("q0.025" = "0.025quant",
+         "q0.5" = "0.5quant",
+         "q0.975" = "0.975quant")
+
+### Back scale non-spatial random covariate values
+
+# Apply 'unscaling' function to every row of effects data frame
+randomEff_df$unscaledID <- sapply(1:NROW(randomEff_df), function(x) {
+  
+  # If week, just use ID as not scaled
+  if (randomEff_df$randomEff[x] == "week") {
+    
+    return(randomEff_df$ID[x])
+    
+  } else { # Otherwise, 'unscale'!
+    
+    # Extract covariate mean and sd for scaling function
+    randomEffMean <-
+      scalingParams[scalingParams$variable == randomEff_df$randomEff[x],
+                    "variableMean"]
+    randomEffSD <-
+      scalingParams[scalingParams$variable == randomEff_df$randomEff[x],
+                    "variableSD"]
+    
+    # Unscale using xSCALED = (x - xbar)/sd --> x = (xSCALED * sd) + xbar principle
+    unscaledID <- (randomEff_df$ID[x] * randomEffSD) + randomEffMean
+    
+    return(unscaledID) # Return unscaled value
+    
+  }})
+
+# Apply 'unscaling' function to every row of record locations
+climCovarValues$unscaledValue <- sapply(1:NROW(climCovarValues), function(x) {
+  
+  # If week, just use value as not scaled
+  if (climCovarValues$randomEff[x] == "week") {
+    
+    return(climCovarValues$value[x])
+    
+  } else { # Otherwise, 'unscale'!
+    
+    # Extract covariate mean and sd for scaling function
+    randomEffMean <- scalingParams[scalingParams$variable == climCovarValues$randomEff[x],
+                                   "variableMean"]
+    randomEffSD <- scalingParams[scalingParams$variable == climCovarValues$randomEff[x],
+                                 "variableSD"]
+    
+    # Unscale using xSCALED = (x - xbar)/sd --> x = (xSCALED * sd) + xbar principle
+    unscaledValue <- (climCovarValues$value[x] * randomEffSD) + randomEffMean
+    
+    return(unscaledValue)
+    
+  }})
+
+### Plot
+
+randomEffPlot <- ggplot(randomEff_df) +
+  
+  # Random effect size
+  geom_line(aes(x = unscaledID, y = q0.5)) +
+  geom_line(aes(x = unscaledID, y = q0.025), lty = 2, alpha = .5) +
+  geom_line(aes(x = unscaledID, y = q0.975), lty = 2, alpha = .5) +
+  
+  facet_wrap(~ randomEff, scale = 'free_x', labeller = as_labeller(randomEffLabels)) +
+  ggtitle("Non-linear random effects") + theme_minimal()
+
+# FIXED EFFECTS PLOT
+
+# Loop through covariates and extract estimates
+for (i in names(linearEffLabels)) {
+  
+  # For covariate i, extract effect size
+  effectSize <- modelSummary$inla$fixed[i,] %>% 
+    t %>% # Transpose
+    data.frame 
+  
+  # Add covariate
+  effectSize$Covariate <- i
+  
+  # If first covariate
+  if( i == names(linearEffLabels)[1]) {
+    
+    # Create a new data frame
+    effectSizeAll <- effectSize
+    
+  }  else {
+    
+    # Join data frames together
+    effectSizeAll <- rbind(effectSizeAll, effectSize) 
+    
+  }
+}
+
+# Plot fixed effects
+fixedEffPlot <- ggplot(effectSizeAll, 
+                       aes(y = X0.5quant, x = Covariate,
+                           ymin = X0.025quant, ymax=X0.975quant, 
+                           col = Covariate, fill = Covariate)) + 
+  #specify position here
+  geom_linerange(linewidth=4, colour = "lightblue") +
+  ggtitle("Linear effects") +
+  geom_hline(yintercept=0, lty=2) +
+  geom_point(size=2, shape=21, colour="white", fill = "black", stroke = 0.1) +
+  scale_x_discrete(name="",
+                   limits = rev(names(linearEffLabels)),
+                   labels = as_labeller(linearEffLabels)) +
+  scale_y_continuous(name="Effect size") +
+  coord_flip() +
+  theme_minimal() + 
+  guides(colour = "none") +
+  theme(axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        legend.text = element_text(size = 16),
+        plot.title = element_text(hjust = 0.5, vjust = -0.5))
+
+# SPDE PARAMETER POSTERIORS
+
+# Extract range and variance of space-time SPDE, and plot
+range.plot <- plot( spde.posterior(model, "spaceTime", what = "range")) +
+  ggtitle("SPDE range") +
+  theme(plot.title = element_text(hjust = 0.5))
+var.plot <- plot(spde.posterior(model, "spaceTime", what = "log.variance")) +
+  ggtitle("SPDE log variance") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+########################
+# MATERN CORRELATION AND COVARIANCE
+
+corplot <- plot(spde.posterior(model, "spaceTime", what = "matern.correlation")) +
+  ggtitle("Matern correlation") +
+  theme(plot.title = element_text(hjust = 0.5))
+covplot <- plot(spde.posterior(model, "spaceTime", what = "matern.covariance")) +
+  ggtitle("Matern covariance") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# MEDIAN AND SD PREDICTION PLOTS
+### Plot median
+
+# Convert to medians to spatRast for saving/plotting
+median_R <- st_rasterize(modelPred[, "median"],
+                           template = template_R,
+                           options = c("a_nodata = NA")) %>%
+  rast
+
+# Add names, i.e. iYear
+names(median_R) <- "Spatial_Prediction" # chage the name of this to "median"
+
+# Convert to data frame for plotting (single layer now)
+median_df <- as.data.frame(median_R, xy = TRUE) 
+#colnames(median_df)[3] <- "median" # Ensure column is named 'median'
+
+# Plot posterior median
+predMedian <- ggplot(data = median_df) +
+  ggtitle("Median posterior occupancy") +
+  coord_fixed() +
+  geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
+  scale_fill_distiller(palette = "BuGn",
+                       direction = 1,
+                       limits = c(0,1),
+                       guide = guide_colourbar(title = "Occupancy\nprobability")) +
+  scale_colour_distiller(palette = "BuGn",
+                         direction = 1,
+                         limits = c(0,1),
+                         guide = "none") +
+  # Removed facet_wrap and geom_text(timeLabels) as there is only one map
+  theme_void() + 
+  theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
+  geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
+
+### Plot posterior sd
+# Convert SD to spatRast (single layer)
+sd_R <- st_rasterize(modelPred[, "sd"],
+                     template = template_R,
+                     options = c("a_nodata = NA")) %>%
+  rast()
+
+# Convert to data frame for plotting
+names(sd_R) <- "sd"
+sd_df <- as.data.frame(sd_R, xy = TRUE)
+
+
+predSD <- ggplot(data = sd_df) +
+  ggtitle("Posterior standard deviation") +
+  geom_tile(aes(x=x, y=y, fill = sd, colour = sd)) +
+  scale_fill_distiller(palette = "BuGn",
+                       direction = 1) +
+  # Removed facet_wrap and geom_text
+  theme_void() + 
+  #theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
+  coord_fixed() +
+  geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
+
+# Predict spatial field only (no time groups)
+spaceTimePred <- predict(model, 
+                         ppxl, # Predicts for just the grid once
+                         ~ data.frame(effectSize = field), # Looks for 'field'
+                         include = c("field"))
+
+# Convert to a single-layer raster
+spaceTime_R <- st_rasterize(spaceTimePred[, "median"],
+                            template = template_R,
+                            options = c("a_nodata = NA")) %>%
+  rast()
+
+# Add names, i.e. iYear
+#names(spaceTime_R) <- c("1", "2")
+
+# Convert to data frame for plotting
+spaceTime_df <- as.data.frame(spaceTime_R, xy = TRUE) # Convert to data frame
+colnames(spaceTime_df)[3] <- "median"
+
+# Plot
+spaceTimePlot <- ggplot(data = spaceTime_df) +
+  ggtitle("Spatio-temporal field")  +
+  geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
+  scale_fill_distiller(palette = "RdYlBu",
+                       direction = 1,
+                       guide = guide_colourbar(title = "SPDE\nposterior\nmedian"),
+                       limits = c(-1,1) * max(abs(spaceTime_df$median))) +
+  scale_colour_distiller(palette = "RdYlBu",
+                         direction = 1,
+                         guide = "none",
+                         limits = c(-1,1) * max(abs(spaceTime_df$median))) +
+  facet_wrap(~ iYear, labeller = as_labeller(timeLabels)) +
+  geom_text(data = timeLabels,
+            mapping = aes(x = 500, y = 925, label = label)) +
+  theme_void() + 
+  theme(plot.title = element_text(hjust = 0.5, vjust = -1),
+        strip.text.x = element_blank()) +
+  coord_fixed() +
+  geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black", inherit.aes = FALSE)
+
+# COVER-CONNECTIVITY INTERACTION PLOTS
+# COVER-CONNECTIVITY INTERACTION PLOTS
+
+### Set up prediction data frames
+
+# How many prediction steps?
+nSamp <- 100
+
+# Extract max scaled value
+maxConnectivity <- global(connW, fun = "max", na.rm = TRUE) %>% 
+  max
+
+# Create unscaled data frame of cover and connectivity values to predict over
+# Separate broadleaf and coniferous data frames
+BF_pred_df <-  expand.grid(BF_pred = seq(0, 1, by = 1/nSamp),
+                           conn_pred = seq(0, maxConnectivity, by = maxConnectivity/nSamp))
+CF_pred_df <- expand.grid(CF_pred = seq(0, 1, by = 1/nSamp),
+                          conn_pred = seq(0, maxConnectivity, by = maxConnectivity/nSamp))
+
+### Scale covariates
+
+# Scale the prediction steps for broadleaf and coniferous woodland separately, and connectivity
+# N.B. Have to name columns the same as the original datasets!
+BF_pred_df$coverBF_scaled <- ( BF_pred_df$BF_pred - 
+                                 scalingParams[scalingParams$variable == "coverBF", "variableMean"] ) /
+  scalingParams[scalingParams$variable == "coverBF", "variableSD"]
+
+CF_pred_df$coverCF_scaled <- ( CF_pred_df$CF_pred - 
+                                 scalingParams[scalingParams$variable == "coverCF", "variableMean"] ) /
+  scalingParams[scalingParams$variable == "coverCF", "variableSD"]
+
+BF_pred_df$connW_scaled <- CF_pred_df$connW_scaled <- # N.B. Connectivity is the same for both cover types
+  (BF_pred_df$conn_pred - scalingParams[scalingParams$variable == "connW", "variableMean"]) /
+  scalingParams[scalingParams$variable == "connW", "variableSD"]
+
+# Calculate scaled interaction terms for prediction
+BF_pred_df$coverBF_connW <- BF_pred_df$coverBF_scaled * BF_pred_df$connW_scaled
+CF_pred_df$coverCF_connW <- CF_pred_df$coverCF_scaled * CF_pred_df$connW_scaled
+
+### Create 'unscaled' vectors of covariate values where species is present for plot
+
+# Subset covarValues to presence records, and then unscale for 
+# broadleaf and coniferous woodland, and connectivity
+presentCoverBF <- subset(covarValues, presence == 1)$coverBF
+presentCoverBF <-
+  ((presentCoverBF * scalingParams[scalingParams$variable == "coverBF", "variableSD"]) +
+     scalingParams[scalingParams$variable == "coverBF", "variableMean"])
+
+presentCoverCF <- subset(covarValues, presence == 1)$coverCF
+presentCoverCF <-
+  ((presentCoverCF * scalingParams[scalingParams$variable == "coverCF", "variableSD"]) +
+     scalingParams[scalingParams$variable == "coverCF", "variableMean"])
+
+presentConnW <- subset(covarValues, presence == 1)$connW
+presentConnW <-
+  ((presentConnW * scalingParams[scalingParams$variable == "connW", "variableSD"]) +
+     scalingParams[scalingParams$variable == "connW", "variableMean"])
+
+# Join unscaled covariate values together, and take unique values to speed up later steps
+presentFixedEff <- data.frame(presentCoverBF, presentCoverCF, presentConnW) %>%
+  distinct
+
+# Remove obsolete objects
+rm(presentCoverBF, presentCoverCF, presentConnW)
+
+### Predict
+
+# Predict broadleaf cover and connectivity interaction at link scale
+BFconnINTpred <- predict(model,
+                         BF_pred_df,
+                         formula = ~ coverBF_eval(coverBF_scaled) +
+                           connectivity_eval(connW_scaled) +
+                           BFconnINT_eval(coverBF_connW),
+                         exclude = c("spaceTime", "week",
+                                     "soilM",  "WMIN", "tasCV", "GDD5", "RAIN",
+                                     "coverCF", "CFconnINT"))
+
+# Predict coniferous cover and connectivity interaction at link scale
+CFconnINTpred <- predict(model,
+                         CF_pred_df,
+                         formula = ~ coverCF_eval(coverCF_scaled) +
+                           connectivity_eval(connW_scaled) +
+                           CFconnINT_eval(coverCF_connW),
+                         exclude = c("spaceTime", "week",
+                                     "soilM",  "WMIN", "tasCV", "GDD5", "RAIN",
+                                     "coverBF", "BFconnINT"))
+
+# Rename prediction columns needed for plot(median)
+BFconnINTpred <- rename(BFconnINTpred, BFmedian = median)
+CFconnINTpred <- rename(CFconnINTpred, CFmedian = median)
+
+# Join into a single dataframe
+allPred <- cbind(BFconnINTpred[, c("BF_pred", "conn_pred", "BFmedian" )], 
+                 CFconnINTpred[, c("CF_pred", "CFmedian" )])
+
+### Filter predictions by cover and connectivity values which species is present in
+
+# Find prediction values (discrete) which species fixed effect values overlap with
+# Using both broadleaf and connectivity columns of unscaled covariate values where the species is present,
+# find if there are any of these values that is within the prediction bin (i.e. x +- max/nSamp)
+# for the respective covariate
+allPred$BFpresent <- mapply( x = allPred$BF_pred, y = allPred$conn_pred,
+                             FUN = function(x, y)
+                               
+                               any((x - 1 / nSamp) < presentFixedEff$presentCoverBF & 
+                                     (x + 1 / nSamp) > presentFixedEff$presentCoverBF  &
+                                     (y - maxConnectivity / nSamp) < presentFixedEff$presentConnW  &
+                                     (y + maxConnectivity / nSamp) > presentFixedEff$presentConnW ))
+
+allPred$CFpresent <- mapply( x = allPred$CF_pred, y = allPred$conn_pred,
+                             FUN = function(x, y)
+                               
+                               any((x - 1 / nSamp) < presentFixedEff$presentCoverCF &
+                                     (x + 1 / nSamp) > presentFixedEff$presentCoverCF  &
+                                     (y - maxConnectivity / nSamp) < presentFixedEff$presentConnW  &
+                                     (y + maxConnectivity / nSamp) > presentFixedEff$presentConnW ))
+
+# Create separate column where prediction is replaced with 'NA' if no presence records from the cell
+allPred <-  allPred %>%
+  mutate(BFmedianPres = if_else(BFpresent == TRUE, BFmedian, NA)) %>%
+  mutate(CFmedianPres = if_else(CFpresent == TRUE, CFmedian, NA))
+
+# Convert to long data format
+allPred <- allPred %>% 
+  gather(coverType, cover_pred, "BF_pred" , "CF_pred") %>%
+  mutate(median = if_else(coverType == "BF_pred", BFmedian , CFmedian )) %>%
+  mutate(medianPres = if_else(coverType == "BF_pred", BFmedianPres , CFmedianPres ))
+
+### Plot
+
+# Plot broadleaf and coniferous cover-connectivity interaction
+# (contours based on all predictions, fill only uses prediction space where species is present)
+intPlot <- ggplot(allPred, aes(x = cover_pred, y = conn_pred, z = median)) +
+  ggtitle("Woodland cover - connectivity interaction") +
+  facet_wrap( ~coverType, labeller = as_labeller(intLabels)) +
+  geom_tile(aes(fill = medianPres, colour = medianPres)) +
+  stat_contour(bins = 50, colour = "black") +
+  scale_fill_distiller(na.value = NA,
+                       palette = "RdYlBu",
+                       direction = 1,
+                       guide = guide_colourbar(title = "Posterior\nmedian"),
+                       limits = c(-1,1) * max(abs(na.omit(allPred$medianPres)))) +
+  scale_colour_distiller(na.value = NA,
+                         palette = "RdYlBu",
+                         direction = 1,
+                         guide = "none",
+                         limits = c(-1,1) * max(abs(na.omit(allPred$medianPres)))) +
+  scale_x_continuous(name="Proportion woodland cover") +
+  scale_y_continuous(name="Connectivity (A)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, vjust = -1),
+        panel.grid.major = element_line(colour = "darkgrey"),
+        strip.text.x = element_text(size = 12))
+
+# JOINT EVALUATION PLOT
+evalPlot <- arrangeGrob(predMedian, predSD, fixedEffPlot, intPlot, randomEffPlot, spaceTimePlot,
+                        nrow = 3, ncol = 2, 
+                        layout_matrix = rbind(c(1, 2), c(3, 4), c(5, 6)),
+                        top = grid::textGrob(paste0(iSpecies, ", logCPO = ", logCPO), gp = grid::gpar(fontsize=20)))
+
+# Compose matern plot
+spdeAndMaternPlot <- arrangeGrob(range.plot, covplot,
+                                 var.plot, corplot, ncol = 2)
+
+# SAVE -----------------------------------------
+
+# Define species directory
+iSpeciesDir <- paste0("Data/SDM_output/Output/", 
+                      taxaGroup, "/", 
+                      iSpeciesTidy)
+
+# Create species directory
+if (!dir.exists(iSpeciesDir)) {
+  
+  dir.create(iSpeciesDir,
+             recursive = TRUE)
+}
+
+### Save objects
+
+# Model
+save(model,
+     file = paste0(iSpeciesDir,
+                   "/modelFit.RData"))
+# Model summary
+save(modelSummary,
+     file = paste0(iSpeciesDir,
+                   "/modelSummary.RData"))
+
+# Model prediction object
+save(modelPred,
+     file = paste0(iSpeciesDir,
+                   "/modelPred.RData"))
+
+# Posterior median relative occurrence probability prediction
+writeRaster(median_R,
+            file = paste0(iSpeciesDir,
+                          "/medianPred.tif"),
+            overwrite= TRUE)
+
+# Evaluation plot
+ggsave(paste0(iSpeciesDir,
+              "/effectsPlot_range_", estimated_range,
+              "_logCPO_", logCPO, ".png"),
+       evalPlot,
+       width = 6000, height = 6000, 
+       units = "px", dpi = 400,
+       limitsize = FALSE)
+
+# SPDE parameter posterior (range and variance) and
+# matern correlation and covariance plot
+ggsave(paste0(iSpeciesDir,
+              "/MatCorCovPlot_range_", estimated_range,
+              "_logCPO_", logCPO, ".png"),
+       spdeAndMaternPlot,
+       width = 6000, height = 3000,
+       units = "px", dpi = 400,
+       limitsize = FALSE)

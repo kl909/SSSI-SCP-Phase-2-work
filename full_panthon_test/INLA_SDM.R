@@ -80,6 +80,18 @@ for (i in list.files("data/spatial_data/vectors/",
                      i)))
 }
 
+order1_length <- project(order1_length, RAIN)
+order1_length <- scale(order1_length)
+order2_length <- project(order2_length, RAIN)
+order2_length <- scale(order2_length)
+order3_length <- project(order3_length, RAIN)
+order3_length <- scale(order3_length)
+order10_area <- project(order10_area, RAIN)
+order10_area <- scale(order10_area)
+#-----------------------------------
+
+
+
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
 # different tasks tring to read/write at same time 
@@ -148,9 +160,19 @@ for (target_species in all_species_list) {
     covarValues <- cbind(new_data, covarValues)
   }
   
-  # Remove rows where GDD5_grp s NA (outside the raster)
-  covarValues <- covarValues %>%
-    filter(!is.na(GDD5_grp))
+  # Remove rows where GDD5_grp is NA (outside the raster)
+  #covarValues <- covarValues %>%
+   # filter(!is.na(GDD5_grp))
+  
+  # Remove rows where GDD5_grp is NA (outside the raster)
+  # This uses GDD5 as the indicator for 'offshore' or 'missing' data
+  keep_idx <- which(!is.na(covarValues$GDD5_grp))
+  
+  # Apply to the data frame
+  covarValues <- covarValues[keep_idx, ]
+  
+  # Apply to the SpatVector (This stops the inlabru warning!)
+  visitDataSpatial <- visitDataSpatial[keep_idx, ]
   
   # Convert NAs in the river ordr columns to 0
   covarValues <- covarValues %>%
@@ -188,7 +210,14 @@ for (target_species in all_species_list) {
 }
 
 # -----------------------------------------------------------------------
+### change river buffer values to 0.05 and empty cells to 0
+#river_layers <- c("order1_length", "order2_length", "order3_length", "order10_area")
 
+#rivers_aligned <- project(river_layers, RAIN)
+
+#rivers_scaled <- scale(rivers_aligned)
+
+------
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
 
 # Remove data frames no longer needed 
@@ -232,6 +261,7 @@ mesh <- inla.mesh.2d(boundary = uk_boundary_sp,
                      min.angle = 26,
                      #crs = gsub( "units=m", "units=km", st_crs(bng)$proj4string )
                      crs = crs_km)
+
 
 # FIT SPATIO-TEMPORAL MODEL ---------------------------------
 
@@ -281,13 +311,13 @@ inlabruCmp  <-  presence ~ 0 + Intercept(1) +
         model = "rw2",
         scale.model = TRUE,
         hyper = randomHyper) +
-  order1(main = order1_legnth,
+  order1(main = order1_length,
           #main_layer = iYear,
           model = "linear") +
   order2(main = order2_length,
           #main_layer = iYear,
           model = "linear") +
-  order3(main = order3_legnth,
+  order3(main = order3_length,
                #main_layer = iYear,
                model = "linear") +
   order10(main = order10_area,
@@ -301,9 +331,9 @@ inlabruCmp  <-  presence ~ 0 + Intercept(1) +
   spaceTime(main = geometry, # this only space (no Time)
             #group = iYear,
             #ngroup = nYear,
-            model = mySpace,
-            control.group = list(model = "ar1",
-                                 hyper = ar1Hyper))
+            model = mySpace)
+            #control.group = list(model = "ar1"), # don't need as only using space not time
+                                 #hyper = ar1Hyper))
 
 # Fit model
 model <- bru(components = inlabruCmp,
@@ -317,6 +347,8 @@ model <- bru(components = inlabruCmp,
 
 # Assign model summary object and output
 modelSummary <- summary(model)
+
+### [KL] script working up to here
 
 # PREDICT -----------------------------------------
 # Create grid prediction pixels

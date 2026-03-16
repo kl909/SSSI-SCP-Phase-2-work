@@ -324,6 +324,9 @@ inlabruCmp  <-  presence ~ 0 + Intercept(1) +
             #main_layer = iYear,
             model = "linear") +
   
+  #visitLengthSingle(main = visitLengthSingle, model = "linear") +
+  #visitLengthShort(main = visitLengthShort, model = "linear") +
+  
   week(main = week,
        model = "rw2",
        cyclic = TRUE,
@@ -348,7 +351,7 @@ model <- bru(components = inlabruCmp,
 # Assign model summary object and output
 modelSummary <- summary(model)
 
-### [KL] script working up to here
+
 
 # PREDICT -----------------------------------------
 # Create grid prediction pixels
@@ -356,6 +359,8 @@ ppxl <- mask(UK_R, smoothUK) %>%
   crop(.,smoothUK ) %>%
   as.points %>%
   st_as_sf
+
+
 
 # Create multi-time period prediction pixels
 #ppxlAll <- fm_cprod(ppxl, data.frame( iYear = seq_len(nYear)))
@@ -379,15 +384,20 @@ modelPred <- predict(model,
                                                   max(model$summary.random$week$mean) + 
                                                   Intercept ))),
                      exclude = c("week")) 
+### [KL] script working up to here
 
 # MODEL EVALUATION --------------------------
 
 # SET PARAMETERS
 
 # Labels
-randomEffLabels <- c('GDD5' = "Growing degree days", 'RAIN' = "Annual precipiation",
-                     'soilM' = "Soil moisture", 'tasCV' = "Temperature seasonality",
-                     'week' = "Week of year" , 'WMIN' = "Winter minimum temperature")
+randomEffLabels <- c('GDD5' = "Growing degree days", 
+                     'RAIN' = "Annual precipiation",
+                     'soilM' = "Soil moisture", 
+                     'tasCV' = "Temperature seasonality",
+                     'week' = "Week of year" , 
+                     'WMIN' = "Winter minimum temperature"
+                     )
 #timeLabels <- data.frame(label = c("1990 - 2000", "2015 -"), 
 #                         iYear = c("1", "2"))
 linearEffLabels <- c('order1' = "order 1 river length",
@@ -487,30 +497,29 @@ randomEffPlot <- ggplot(randomEff_df) +
   facet_wrap(~ randomEff, scale = 'free_x', labeller = as_labeller(randomEffLabels)) +
   ggtitle("Non-linear random effects") + theme_minimal()
 
-# FIXED EFFECTS PLOT
+# display plot
+randomEffPlot
 
+# FIXED EFFECTS PLOT
 # Loop through covariates and extract estimates
 for (i in names(linearEffLabels)) {
   
-  # For covariate i, extract effect size
-  effectSize <- modelSummary$inla$fixed[i,] %>% 
-    t %>% # Transpose
-    data.frame 
-  
-  # Add covariate
-  effectSize$Covariate <- i
-  
-  # If first covariate
-  if( i == names(linearEffLabels)[1]) {
+  # MINIMAL CHANGE: Only run if 'i' exists in the fixed effects results
+  if (i %in% rownames(modelSummary$fixed)) {
     
-    # Create a new data frame
-    effectSizeAll <- effectSize
+    # Extract effect size - matching your original pipe logic
+    effectSize <- modelSummary$fixed[i,] %>%  
+      t %>% 
+      data.frame 
     
-  }  else {
+    # Add covariate name
+    effectSize$Covariate <- i
     
-    # Join data frames together
-    effectSizeAll <- rbind(effectSizeAll, effectSize) 
-    
+    if( i == names(linearEffLabels)[names(linearEffLabels) %in% rownames(modelSummary$fixed)][1]) {
+      effectSizeAll <- effectSize
+    }  else {
+      effectSizeAll <- rbind(effectSizeAll, effectSize) 
+    }
   }
 }
 
@@ -535,6 +544,11 @@ fixedEffPlot <- ggplot(effectSizeAll,
         axis.title.x = element_text(size = 12),
         legend.text = element_text(size = 16),
         plot.title = element_text(hjust = 0.5, vjust = -0.5))
+
+# display plot
+fixedEffPlot
+
+# [KL] script working up to here
 
 # SPDE PARAMETER POSTERIORS
 

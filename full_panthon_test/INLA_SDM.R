@@ -550,7 +550,22 @@ fixedEffPlot <- ggplot(effectSizeAll,
 # display plot
 fixedEffPlot
 
+
+### [KL] adding in prediction map plot
+
+prob_raster <- st_rasterize(modelPred["mean"], template_R)
+prob_raster_terra <- rast(prob_raster)
+
+# Plot
+ggplot() +
+  geom_stars(data = prob_raster) +
+  scale_fill_viridis_c(option = "magma", name = "Prob. of Presence") +
+  coord_equal() +
+  theme_minimal() +
+  labs(title = paste("Predicted Distribution:", target_species))
+
 # [KL] working up to here now
+
 
 # SPDE PARAMETER POSTERIORS
 

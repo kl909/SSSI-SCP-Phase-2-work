@@ -504,34 +504,31 @@ randomEffPlot <- ggplot(randomEff_df) +
 # display plot
 randomEffPlot
 
-# FIXED EFFECTS PLOT
 
+# FIXED EFFECTS PLOT
 # Loop through covariates and extract estimates
+fixed_effects_table <- modelSummary$inla$fixed
+
+# 2. Verify it's not NULL anymore (this should finally work!)
+#print(head(fixed_effects_table))
+
+# 3. Run the loop
+effectSizeAll <- data.frame()
+
 for (i in names(linearEffLabels)) {
-  
-  # MINIMAL CHANGE: Only run if 'i' exists in the fixed effects results
-  if (i %in% rownames(modelSummary$fixed)) {
-    
-    # Extract effect size - matching your original pipe logic
-    effectSize <- modelSummary$fixed[i,] %>%  
-      t %>% 
-      data.frame 
-    
-    # Add covariate name
+  if (i %in% rownames(fixed_effects_table)) {
+    effectSize <- as.data.frame(fixed_effects_table[i, , drop = FALSE])
     effectSize$Covariate <- i
-    
-    if( i == names(linearEffLabels)[names(linearEffLabels) %in% rownames(modelSummary$fixed)][1]) {
-      effectSizeAll <- effectSize
-    }  else {
-      effectSizeAll <- rbind(effectSizeAll, effectSize) 
-    }
+    effectSizeAll <- rbind(effectSizeAll, effectSize)
   }
 }
 
+#rownames(effectSizeAll) <- NULL
+
 # Plot fixed effects
 fixedEffPlot <- ggplot(effectSizeAll, 
-                       aes(y = X0.5quant, x = Covariate,
-                           ymin = X0.025quant, ymax=X0.975quant, 
+                       aes(y = `0.5quant`, x = Covariate,
+                           ymin = `0.025quant`, ymax=`0.975quant`, 
                            col = Covariate, fill = Covariate)) + 
   #specify position here
   geom_linerange(linewidth=4, colour = "lightblue") +
@@ -553,7 +550,7 @@ fixedEffPlot <- ggplot(effectSizeAll,
 # display plot
 fixedEffPlot
 
-# [KL] script working up to here
+# [KL] working up to here now
 
 # SPDE PARAMETER POSTERIORS
 

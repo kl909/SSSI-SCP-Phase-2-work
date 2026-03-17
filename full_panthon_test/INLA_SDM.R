@@ -140,6 +140,19 @@ for (target_species in all_species_list) {
                                 geom = c("x", "y"), 
                                 crs = crs(master_data))
   
+  # CREATE EFFORT COVARIATE
+  new_cols <- visitDataSpatial %>%
+    as.data.frame() %>%                          # Convert to DF for math
+    model.matrix(object = ~visitLength) %>%      # Create dummies
+    as.data.frame() %>%
+    dplyr::select(-1)
+  
+  # Safely put the new columns back into the spatial object
+  visitDataSpatial$visitLengthShort  <- new_cols[,1]
+  visitDataSpatial$visitLengthSingle <- new_cols[,2]
+  
+  # EXTRACT COVARIATES FOR EFFECTS PLOT -------------------------------
+  
   covarValues <- visitDataSpatial_df
   
   clim_vars <- c("GDD5_grp", "WMIN_grp", "tasCV_grp", "RAIN_grp", "soilM_grp",
@@ -178,7 +191,7 @@ for (target_species in all_species_list) {
   covarValues <- covarValues %>%
     mutate(across(starts_with("order"), ~replace_na(., 0)))
   
-  # tidy up columns
+  ##### tidy up columns
   covarValues <- covarValues %>%
     dplyr::select(presence,
                   week,
@@ -208,14 +221,6 @@ for (target_species in all_species_list) {
   # save the long summary data
   saveRDS(climCovarValues, paste0("data/output/clim_summary_", tidy_name, ".rds"))
 }
-
-# -----------------------------------------------------------------------
-### change river buffer values to 0.05 and empty cells to 0
-#river_layers <- c("order1_length", "order2_length", "order3_length", "order10_area")
-
-#rivers_aligned <- project(river_layers, RAIN)
-
-#rivers_scaled <- scale(rivers_aligned)
 
 ------
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
@@ -324,8 +329,8 @@ inlabruCmp  <-  presence ~ 0 + Intercept(1) +
             #main_layer = iYear,
             model = "linear") +
   
-  #visitLengthSingle(main = visitLengthSingle, model = "linear") +
-  #visitLengthShort(main = visitLengthShort, model = "linear") +
+  visitLengthSingle(main = visitLengthSingle, model = "linear") +
+  visitLengthShort(main = visitLengthShort, model = "linear") +
   
   week(main = week,
        model = "rw2",
@@ -384,7 +389,6 @@ modelPred <- predict(model,
                                                   max(model$summary.random$week$mean) + 
                                                   Intercept ))),
                      exclude = c("week")) 
-### [KL] script working up to here
 
 # MODEL EVALUATION --------------------------
 
@@ -501,6 +505,7 @@ randomEffPlot <- ggplot(randomEff_df) +
 randomEffPlot
 
 # FIXED EFFECTS PLOT
+
 # Loop through covariates and extract estimates
 for (i in names(linearEffLabels)) {
   

@@ -500,6 +500,9 @@ randomEffPlot <- ggplot(randomEff_df) +
 # display plot
 randomEffPlot
 
+# save plot
+ggsave(filename = paste0("data/output/plots/random_eff_", tidy_name, ".png"),
+       plot = randomEffPlot, width = 10, height = 8, bg = "white")
 
 # FIXED EFFECTS PLOT
 # Loop through covariates and extract estimates
@@ -546,19 +549,21 @@ fixedEffPlot <- ggplot(effectSizeAll,
 # display plot
 fixedEffPlot
 
+ggsave(filename = paste0("data/output/plots/fixed_eff_", tidy_name, ".png"),
+       plot = fixedEffPlot, width = 8, height = 6, bg = "white")
 
 ### [KL] adding in prediction map plot
 
-prob_raster <- st_rasterize(modelPred["mean"], template_R)
-prob_raster_terra <- rast(prob_raster)
-
-# Plot
-ggplot() +
-  geom_stars(data = prob_raster) +
-  scale_fill_viridis_c(option = "magma", name = "Prob. of Presence") +
-  coord_equal() +
-  theme_minimal() +
-  labs(title = paste("Predicted Distribution:", target_species))
+# prob_raster <- st_rasterize(modelPred["mean"], template_R)
+# prob_raster_terra <- rast(prob_raster)
+# 
+# # Plot
+# ggplot() +
+#   geom_stars(data = prob_raster) +
+#   scale_fill_viridis_c(option = "magma", name = "Prob. of Presence") +
+#   coord_equal() +
+#   theme_minimal() +
+#   labs(title = paste("Predicted Distribution:", target_species))
 
 
 #####################################################
@@ -583,6 +588,11 @@ covplot <- plot(spde.posterior(model, "spaceTime", what = "matern.covariance")) 
   ggtitle("Matern covariance") +
   theme(plot.title = element_text(hjust = 0.5))
 
+ggsave(filename = paste0("data/output/plots/cor_plot_", tidy_name, ".png"),
+       plot = corplot, width = 8, height = 6, bg = "white")
+ggsave(filename = paste0("data/output/plots/cov_plot_", tidy_name, ".png"),
+       plot = covplot, width = 8, height = 6, bg = "white")
+
 # MEDIAN AND SD PREDICTION PLOTS
 ### Plot median
 
@@ -597,7 +607,7 @@ names(median_R) <- "Spatial_Prediction" # chage the name of this to "median"
 
 # Convert to data frame for plotting (single layer now)
 median_df <- as.data.frame(median_R, xy = TRUE) 
-#colnames(median_df)[3] <- "median" # Ensure column is named 'median'
+colnames(median_df)[3] <- "median" # Ensure column is named 'median'
 
 # Plot posterior median
 predMedian <- ggplot(data = median_df) +
@@ -616,6 +626,9 @@ predMedian <- ggplot(data = median_df) +
   theme_void() + 
   theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
+
+ggsave(filename = paste0("data/output/plots/pred_median_", tidy_name, ".png"),
+       plot = predMedian, width = 8, height = 6, bg = "white")
 
 ### Plot posterior sd
 # Convert SD to spatRast (single layer)
@@ -640,6 +653,8 @@ predSD <- ggplot(data = sd_df) +
   coord_fixed() +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
 
+ggsave(filename = paste0("data/output/plots/pred_SD_", tidy_name, ".png"),
+       plot = predSD, width = 8, height = 6, bg = "white")
 
 # Predict spatial field only (no time groups)
 spaceTimePred <- predict(model, 
@@ -669,6 +684,9 @@ spaceTimePlot <- ggplot(data = spaceTime_df) +
   theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
   coord_fixed() +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black", inherit.aes = FALSE)
+
+ggsave(filename = paste0("data/output/plots/space_time_", tidy_name, ".png"),
+       plot = spaceTimePlot, width = 8, height = 6, bg = "white")
 
 ###################### [KL] works up to here
 ###################################################################################

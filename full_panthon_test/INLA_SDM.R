@@ -564,8 +564,8 @@ ggplot() +
   theme_minimal() +
   labs(title = paste("Predicted Distribution:", target_species))
 
-# [KL] working up to here now
 
+#####################################################
 
 # SPDE PARAMETER POSTERIORS
 
@@ -644,11 +644,14 @@ predSD <- ggplot(data = sd_df) +
   coord_fixed() +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
 
+
+###################### [KL] works up to here
+
 # Predict spatial field only (no time groups)
 spaceTimePred <- predict(model, 
                          ppxl, # Predicts for just the grid once
-                         ~ data.frame(effectSize = field), # Looks for 'field'
-                         include = c("field"))
+                         ~ data.frame(effectSize = spaceTime), # Looks for 'field'
+                         include = c("spaceTime"))
 
 # Convert to a single-layer raster
 spaceTime_R <- st_rasterize(spaceTimePred[, "median"],

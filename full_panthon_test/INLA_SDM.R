@@ -264,15 +264,12 @@ mesh <- inla.mesh.2d(boundary = uk_boundary_sp,
                      offset = c(1,2) * maxEdge, 
                      cutoff = maxEdge/2,
                      min.angle = 26,
-                     #crs = gsub( "units=m", "units=km", st_crs(bng)$proj4string )
                      crs = crs_km)
 
 
 # FIT SPATIO-TEMPORAL MODEL ---------------------------------
 
 # Create indices -- NO TEMPORAL DIMENSION FOR US - MAKE SURE ONLY ONE YEAR
-#iYear <- visitDataSpatial$iYear # iYear = 1
-#nYear <- length(unique(iYear)) # nYear = 1
 
 # Define spatial SPDE priors
 mySpace <- inla.spde2.pcmatern(
@@ -367,10 +364,7 @@ ppxl <- mask(UK_R, smoothUK) %>%
 
 
 
-# Create multi-time period prediction pixels
-#ppxlAll <- fm_cprod(ppxl, data.frame( iYear = seq_len(nYear)))
-
-# Predict using spatio-temporal model
+# Predict using spatio model
 # ( N.B. excluding VISIT_LENGTH means including the reference factor level- long- which is what we want!)
 modelPred <- predict(model, 
                      ppxl, 
@@ -402,16 +396,14 @@ randomEffLabels <- c('GDD5' = "Growing degree days",
                      'week' = "Week of year" , 
                      'WMIN' = "Winter minimum temperature"
                      )
-#timeLabels <- data.frame(label = c("1990 - 2000", "2015 -"), 
-#                         iYear = c("1", "2"))
+
 linearEffLabels <- c('order1' = "order 1 river length",
                      'order2' = "order 2 river length",
                      'order3' = "order 3 river length",
                      'order10' = "order 10 lake area",
                      'visitLengthSingle' = "Single record visit",
                      'visitLengthShort' = "Short visit (2-3 records)")
-#intLabels <- c('BF_pred' = "Broadleaf ",
-#               'CF_pred' = "Coniferous")
+
 
 # Template raster for converting from sf to terra raster objects
 template_R <- st_as_stars(UK_R)
@@ -645,8 +637,6 @@ predSD <- ggplot(data = sd_df) +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
 
 
-###################### [KL] works up to here
-
 # Predict spatial field only (no time groups)
 spaceTimePred <- predict(model, 
                          ppxl, # Predicts for just the grid once
@@ -659,8 +649,6 @@ spaceTime_R <- st_rasterize(spaceTimePred[, "median"],
                             options = c("a_nodata = NA")) %>%
   rast()
 
-# Add names, i.e. iYear
-#names(spaceTime_R) <- c("1", "2")
 
 # Convert to data frame for plotting
 spaceTime_df <- as.data.frame(spaceTime_R, xy = TRUE) # Convert to data frame
@@ -678,223 +666,225 @@ spaceTimePlot <- ggplot(data = spaceTime_df) +
   coord_fixed() +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black", inherit.aes = FALSE)
 
-
-
-# COVER-CONNECTIVITY INTERACTION PLOTS
-# COVER-CONNECTIVITY INTERACTION PLOTS
-
-### Set up prediction data frames
-
-# How many prediction steps?
-nSamp <- 100
-
-# Extract max scaled value
-maxConnectivity <- global(connW, fun = "max", na.rm = TRUE) %>% 
-  max
-
-# Create unscaled data frame of cover and connectivity values to predict over
-# Separate broadleaf and coniferous data frames
-BF_pred_df <-  expand.grid(BF_pred = seq(0, 1, by = 1/nSamp),
-                           conn_pred = seq(0, maxConnectivity, by = maxConnectivity/nSamp))
-CF_pred_df <- expand.grid(CF_pred = seq(0, 1, by = 1/nSamp),
-                          conn_pred = seq(0, maxConnectivity, by = maxConnectivity/nSamp))
-
-### Scale covariates
-
-# Scale the prediction steps for broadleaf and coniferous woodland separately, and connectivity
-# N.B. Have to name columns the same as the original datasets!
-BF_pred_df$coverBF_scaled <- ( BF_pred_df$BF_pred - 
-                                 scalingParams[scalingParams$variable == "coverBF", "variableMean"] ) /
-  scalingParams[scalingParams$variable == "coverBF", "variableSD"]
-
-CF_pred_df$coverCF_scaled <- ( CF_pred_df$CF_pred - 
-                                 scalingParams[scalingParams$variable == "coverCF", "variableMean"] ) /
-  scalingParams[scalingParams$variable == "coverCF", "variableSD"]
-
-BF_pred_df$connW_scaled <- CF_pred_df$connW_scaled <- # N.B. Connectivity is the same for both cover types
-  (BF_pred_df$conn_pred - scalingParams[scalingParams$variable == "connW", "variableMean"]) /
-  scalingParams[scalingParams$variable == "connW", "variableSD"]
-
-# Calculate scaled interaction terms for prediction
-BF_pred_df$coverBF_connW <- BF_pred_df$coverBF_scaled * BF_pred_df$connW_scaled
-CF_pred_df$coverCF_connW <- CF_pred_df$coverCF_scaled * CF_pred_df$connW_scaled
-
-### Create 'unscaled' vectors of covariate values where species is present for plot
-
-# Subset covarValues to presence records, and then unscale for 
-# broadleaf and coniferous woodland, and connectivity
-presentCoverBF <- subset(covarValues, presence == 1)$coverBF
-presentCoverBF <-
-  ((presentCoverBF * scalingParams[scalingParams$variable == "coverBF", "variableSD"]) +
-     scalingParams[scalingParams$variable == "coverBF", "variableMean"])
-
-presentCoverCF <- subset(covarValues, presence == 1)$coverCF
-presentCoverCF <-
-  ((presentCoverCF * scalingParams[scalingParams$variable == "coverCF", "variableSD"]) +
-     scalingParams[scalingParams$variable == "coverCF", "variableMean"])
-
-presentConnW <- subset(covarValues, presence == 1)$connW
-presentConnW <-
-  ((presentConnW * scalingParams[scalingParams$variable == "connW", "variableSD"]) +
-     scalingParams[scalingParams$variable == "connW", "variableMean"])
-
-# Join unscaled covariate values together, and take unique values to speed up later steps
-presentFixedEff <- data.frame(presentCoverBF, presentCoverCF, presentConnW) %>%
-  distinct
-
-# Remove obsolete objects
-rm(presentCoverBF, presentCoverCF, presentConnW)
-
-### Predict
-
-# Predict broadleaf cover and connectivity interaction at link scale
-BFconnINTpred <- predict(model,
-                         BF_pred_df,
-                         formula = ~ coverBF_eval(coverBF_scaled) +
-                           connectivity_eval(connW_scaled) +
-                           BFconnINT_eval(coverBF_connW),
-                         exclude = c("spaceTime", "week",
-                                     "soilM",  "WMIN", "tasCV", "GDD5", "RAIN",
-                                     "coverCF", "CFconnINT"))
-
-# Predict coniferous cover and connectivity interaction at link scale
-CFconnINTpred <- predict(model,
-                         CF_pred_df,
-                         formula = ~ coverCF_eval(coverCF_scaled) +
-                           connectivity_eval(connW_scaled) +
-                           CFconnINT_eval(coverCF_connW),
-                         exclude = c("spaceTime", "week",
-                                     "soilM",  "WMIN", "tasCV", "GDD5", "RAIN",
-                                     "coverBF", "BFconnINT"))
-
-# Rename prediction columns needed for plot(median)
-BFconnINTpred <- rename(BFconnINTpred, BFmedian = median)
-CFconnINTpred <- rename(CFconnINTpred, CFmedian = median)
-
-# Join into a single dataframe
-allPred <- cbind(BFconnINTpred[, c("BF_pred", "conn_pred", "BFmedian" )], 
-                 CFconnINTpred[, c("CF_pred", "CFmedian" )])
-
-### Filter predictions by cover and connectivity values which species is present in
-
-# Find prediction values (discrete) which species fixed effect values overlap with
-# Using both broadleaf and connectivity columns of unscaled covariate values where the species is present,
-# find if there are any of these values that is within the prediction bin (i.e. x +- max/nSamp)
-# for the respective covariate
-allPred$BFpresent <- mapply( x = allPred$BF_pred, y = allPred$conn_pred,
-                             FUN = function(x, y)
-                               
-                               any((x - 1 / nSamp) < presentFixedEff$presentCoverBF & 
-                                     (x + 1 / nSamp) > presentFixedEff$presentCoverBF  &
-                                     (y - maxConnectivity / nSamp) < presentFixedEff$presentConnW  &
-                                     (y + maxConnectivity / nSamp) > presentFixedEff$presentConnW ))
-
-allPred$CFpresent <- mapply( x = allPred$CF_pred, y = allPred$conn_pred,
-                             FUN = function(x, y)
-                               
-                               any((x - 1 / nSamp) < presentFixedEff$presentCoverCF &
-                                     (x + 1 / nSamp) > presentFixedEff$presentCoverCF  &
-                                     (y - maxConnectivity / nSamp) < presentFixedEff$presentConnW  &
-                                     (y + maxConnectivity / nSamp) > presentFixedEff$presentConnW ))
-
-# Create separate column where prediction is replaced with 'NA' if no presence records from the cell
-allPred <-  allPred %>%
-  mutate(BFmedianPres = if_else(BFpresent == TRUE, BFmedian, NA)) %>%
-  mutate(CFmedianPres = if_else(CFpresent == TRUE, CFmedian, NA))
-
-# Convert to long data format
-allPred <- allPred %>% 
-  gather(coverType, cover_pred, "BF_pred" , "CF_pred") %>%
-  mutate(median = if_else(coverType == "BF_pred", BFmedian , CFmedian )) %>%
-  mutate(medianPres = if_else(coverType == "BF_pred", BFmedianPres , CFmedianPres ))
-
-### Plot
-
-# Plot broadleaf and coniferous cover-connectivity interaction
-# (contours based on all predictions, fill only uses prediction space where species is present)
-intPlot <- ggplot(allPred, aes(x = cover_pred, y = conn_pred, z = median)) +
-  ggtitle("Woodland cover - connectivity interaction") +
-  facet_wrap( ~coverType, labeller = as_labeller(intLabels)) +
-  geom_tile(aes(fill = medianPres, colour = medianPres)) +
-  stat_contour(bins = 50, colour = "black") +
-  scale_fill_distiller(na.value = NA,
-                       palette = "RdYlBu",
-                       direction = 1,
-                       guide = guide_colourbar(title = "Posterior\nmedian"),
-                       limits = c(-1,1) * max(abs(na.omit(allPred$medianPres)))) +
-  scale_colour_distiller(na.value = NA,
-                         palette = "RdYlBu",
-                         direction = 1,
-                         guide = "none",
-                         limits = c(-1,1) * max(abs(na.omit(allPred$medianPres)))) +
-  scale_x_continuous(name="Proportion woodland cover") +
-  scale_y_continuous(name="Connectivity (A)") +
-  theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5, vjust = -1),
-        panel.grid.major = element_line(colour = "darkgrey"),
-        strip.text.x = element_text(size = 12))
-
-# JOINT EVALUATION PLOT
-evalPlot <- arrangeGrob(predMedian, predSD, fixedEffPlot, intPlot, randomEffPlot, spaceTimePlot,
-                        nrow = 3, ncol = 2, 
-                        layout_matrix = rbind(c(1, 2), c(3, 4), c(5, 6)),
-                        top = grid::textGrob(paste0(iSpecies, ", logCPO = ", logCPO), gp = grid::gpar(fontsize=20)))
-
-# Compose matern plot
-spdeAndMaternPlot <- arrangeGrob(range.plot, covplot,
-                                 var.plot, corplot, ncol = 2)
-
-# SAVE -----------------------------------------
-
-# Define species directory
-iSpeciesDir <- paste0("Data/SDM_output/Output/", 
-                      taxaGroup, "/", 
-                      iSpeciesTidy)
-
-# Create species directory
-if (!dir.exists(iSpeciesDir)) {
-  
-  dir.create(iSpeciesDir,
-             recursive = TRUE)
-}
-
-### Save objects
-
-# Model
-save(model,
-     file = paste0(iSpeciesDir,
-                   "/modelFit.RData"))
-# Model summary
-save(modelSummary,
-     file = paste0(iSpeciesDir,
-                   "/modelSummary.RData"))
-
-# Model prediction object
-save(modelPred,
-     file = paste0(iSpeciesDir,
-                   "/modelPred.RData"))
-
-# Posterior median relative occurrence probability prediction
-writeRaster(median_R,
-            file = paste0(iSpeciesDir,
-                          "/medianPred.tif"),
-            overwrite= TRUE)
-
-# Evaluation plot
-ggsave(paste0(iSpeciesDir,
-              "/effectsPlot_range_", estimated_range,
-              "_logCPO_", logCPO, ".png"),
-       evalPlot,
-       width = 6000, height = 6000, 
-       units = "px", dpi = 400,
-       limitsize = FALSE)
-
-# SPDE parameter posterior (range and variance) and
-# matern correlation and covariance plot
-ggsave(paste0(iSpeciesDir,
-              "/MatCorCovPlot_range_", estimated_range,
-              "_logCPO_", logCPO, ".png"),
-       spdeAndMaternPlot,
-       width = 6000, height = 3000,
-       units = "px", dpi = 400,
-       limitsize = FALSE)
+###################### [KL] works up to here
+###################################################################################
+# # below is all for treescape connectivity
+# 
+# # COVER-CONNECTIVITY INTERACTION PLOTS
+# # COVER-CONNECTIVITY INTERACTION PLOTS
+# 
+# ### Set up prediction data frames
+# 
+# # How many prediction steps?
+# nSamp <- 100
+# 
+# # Extract max scaled value
+# maxConnectivity <- global(connW, fun = "max", na.rm = TRUE) %>% 
+#   max
+# 
+# # Create unscaled data frame of cover and connectivity values to predict over
+# # Separate broadleaf and coniferous data frames
+# BF_pred_df <-  expand.grid(BF_pred = seq(0, 1, by = 1/nSamp),
+#                            conn_pred = seq(0, maxConnectivity, by = maxConnectivity/nSamp))
+# CF_pred_df <- expand.grid(CF_pred = seq(0, 1, by = 1/nSamp),
+#                           conn_pred = seq(0, maxConnectivity, by = maxConnectivity/nSamp))
+# 
+# ### Scale covariates
+# 
+# # Scale the prediction steps for broadleaf and coniferous woodland separately, and connectivity
+# # N.B. Have to name columns the same as the original datasets!
+# BF_pred_df$coverBF_scaled <- ( BF_pred_df$BF_pred - 
+#                                  scalingParams[scalingParams$variable == "coverBF", "variableMean"] ) /
+#   scalingParams[scalingParams$variable == "coverBF", "variableSD"]
+# 
+# CF_pred_df$coverCF_scaled <- ( CF_pred_df$CF_pred - 
+#                                  scalingParams[scalingParams$variable == "coverCF", "variableMean"] ) /
+#   scalingParams[scalingParams$variable == "coverCF", "variableSD"]
+# 
+# BF_pred_df$connW_scaled <- CF_pred_df$connW_scaled <- # N.B. Connectivity is the same for both cover types
+#   (BF_pred_df$conn_pred - scalingParams[scalingParams$variable == "connW", "variableMean"]) /
+#   scalingParams[scalingParams$variable == "connW", "variableSD"]
+# 
+# # Calculate scaled interaction terms for prediction
+# BF_pred_df$coverBF_connW <- BF_pred_df$coverBF_scaled * BF_pred_df$connW_scaled
+# CF_pred_df$coverCF_connW <- CF_pred_df$coverCF_scaled * CF_pred_df$connW_scaled
+# 
+# ### Create 'unscaled' vectors of covariate values where species is present for plot
+# 
+# # Subset covarValues to presence records, and then unscale for 
+# # broadleaf and coniferous woodland, and connectivity
+# presentCoverBF <- subset(covarValues, presence == 1)$coverBF
+# presentCoverBF <-
+#   ((presentCoverBF * scalingParams[scalingParams$variable == "coverBF", "variableSD"]) +
+#      scalingParams[scalingParams$variable == "coverBF", "variableMean"])
+# 
+# presentCoverCF <- subset(covarValues, presence == 1)$coverCF
+# presentCoverCF <-
+#   ((presentCoverCF * scalingParams[scalingParams$variable == "coverCF", "variableSD"]) +
+#      scalingParams[scalingParams$variable == "coverCF", "variableMean"])
+# 
+# presentConnW <- subset(covarValues, presence == 1)$connW
+# presentConnW <-
+#   ((presentConnW * scalingParams[scalingParams$variable == "connW", "variableSD"]) +
+#      scalingParams[scalingParams$variable == "connW", "variableMean"])
+# 
+# # Join unscaled covariate values together, and take unique values to speed up later steps
+# presentFixedEff <- data.frame(presentCoverBF, presentCoverCF, presentConnW) %>%
+#   distinct
+# 
+# # Remove obsolete objects
+# rm(presentCoverBF, presentCoverCF, presentConnW)
+# 
+# ### Predict
+# 
+# # Predict broadleaf cover and connectivity interaction at link scale
+# BFconnINTpred <- predict(model,
+#                          BF_pred_df,
+#                          formula = ~ coverBF_eval(coverBF_scaled) +
+#                            connectivity_eval(connW_scaled) +
+#                            BFconnINT_eval(coverBF_connW),
+#                          exclude = c("spaceTime", "week",
+#                                      "soilM",  "WMIN", "tasCV", "GDD5", "RAIN",
+#                                      "coverCF", "CFconnINT"))
+# 
+# # Predict coniferous cover and connectivity interaction at link scale
+# CFconnINTpred <- predict(model,
+#                          CF_pred_df,
+#                          formula = ~ coverCF_eval(coverCF_scaled) +
+#                            connectivity_eval(connW_scaled) +
+#                            CFconnINT_eval(coverCF_connW),
+#                          exclude = c("spaceTime", "week",
+#                                      "soilM",  "WMIN", "tasCV", "GDD5", "RAIN",
+#                                      "coverBF", "BFconnINT"))
+# 
+# # Rename prediction columns needed for plot(median)
+# BFconnINTpred <- rename(BFconnINTpred, BFmedian = median)
+# CFconnINTpred <- rename(CFconnINTpred, CFmedian = median)
+# 
+# # Join into a single dataframe
+# allPred <- cbind(BFconnINTpred[, c("BF_pred", "conn_pred", "BFmedian" )], 
+#                  CFconnINTpred[, c("CF_pred", "CFmedian" )])
+# 
+# ### Filter predictions by cover and connectivity values which species is present in
+# 
+# # Find prediction values (discrete) which species fixed effect values overlap with
+# # Using both broadleaf and connectivity columns of unscaled covariate values where the species is present,
+# # find if there are any of these values that is within the prediction bin (i.e. x +- max/nSamp)
+# # for the respective covariate
+# allPred$BFpresent <- mapply( x = allPred$BF_pred, y = allPred$conn_pred,
+#                              FUN = function(x, y)
+#                                
+#                                any((x - 1 / nSamp) < presentFixedEff$presentCoverBF & 
+#                                      (x + 1 / nSamp) > presentFixedEff$presentCoverBF  &
+#                                      (y - maxConnectivity / nSamp) < presentFixedEff$presentConnW  &
+#                                      (y + maxConnectivity / nSamp) > presentFixedEff$presentConnW ))
+# 
+# allPred$CFpresent <- mapply( x = allPred$CF_pred, y = allPred$conn_pred,
+#                              FUN = function(x, y)
+#                                
+#                                any((x - 1 / nSamp) < presentFixedEff$presentCoverCF &
+#                                      (x + 1 / nSamp) > presentFixedEff$presentCoverCF  &
+#                                      (y - maxConnectivity / nSamp) < presentFixedEff$presentConnW  &
+#                                      (y + maxConnectivity / nSamp) > presentFixedEff$presentConnW ))
+# 
+# # Create separate column where prediction is replaced with 'NA' if no presence records from the cell
+# allPred <-  allPred %>%
+#   mutate(BFmedianPres = if_else(BFpresent == TRUE, BFmedian, NA)) %>%
+#   mutate(CFmedianPres = if_else(CFpresent == TRUE, CFmedian, NA))
+# 
+# # Convert to long data format
+# allPred <- allPred %>% 
+#   gather(coverType, cover_pred, "BF_pred" , "CF_pred") %>%
+#   mutate(median = if_else(coverType == "BF_pred", BFmedian , CFmedian )) %>%
+#   mutate(medianPres = if_else(coverType == "BF_pred", BFmedianPres , CFmedianPres ))
+# 
+# ### Plot
+# 
+# # Plot broadleaf and coniferous cover-connectivity interaction
+# # (contours based on all predictions, fill only uses prediction space where species is present)
+# intPlot <- ggplot(allPred, aes(x = cover_pred, y = conn_pred, z = median)) +
+#   ggtitle("Woodland cover - connectivity interaction") +
+#   facet_wrap( ~coverType, labeller = as_labeller(intLabels)) +
+#   geom_tile(aes(fill = medianPres, colour = medianPres)) +
+#   stat_contour(bins = 50, colour = "black") +
+#   scale_fill_distiller(na.value = NA,
+#                        palette = "RdYlBu",
+#                        direction = 1,
+#                        guide = guide_colourbar(title = "Posterior\nmedian"),
+#                        limits = c(-1,1) * max(abs(na.omit(allPred$medianPres)))) +
+#   scale_colour_distiller(na.value = NA,
+#                          palette = "RdYlBu",
+#                          direction = 1,
+#                          guide = "none",
+#                          limits = c(-1,1) * max(abs(na.omit(allPred$medianPres)))) +
+#   scale_x_continuous(name="Proportion woodland cover") +
+#   scale_y_continuous(name="Connectivity (A)") +
+#   theme_minimal() +
+#   theme(plot.title = element_text(hjust = 0.5, vjust = -1),
+#         panel.grid.major = element_line(colour = "darkgrey"),
+#         strip.text.x = element_text(size = 12))
+# 
+# # JOINT EVALUATION PLOT
+# evalPlot <- arrangeGrob(predMedian, predSD, fixedEffPlot, intPlot, randomEffPlot, spaceTimePlot,
+#                         nrow = 3, ncol = 2, 
+#                         layout_matrix = rbind(c(1, 2), c(3, 4), c(5, 6)),
+#                         top = grid::textGrob(paste0(iSpecies, ", logCPO = ", logCPO), gp = grid::gpar(fontsize=20)))
+# 
+# # Compose matern plot
+# spdeAndMaternPlot <- arrangeGrob(range.plot, covplot,
+#                                  var.plot, corplot, ncol = 2)
+# 
+# # SAVE -----------------------------------------
+# 
+# # Define species directory
+# iSpeciesDir <- paste0("Data/SDM_output/Output/", 
+#                       taxaGroup, "/", 
+#                       iSpeciesTidy)
+# 
+# # Create species directory
+# if (!dir.exists(iSpeciesDir)) {
+#   
+#   dir.create(iSpeciesDir,
+#              recursive = TRUE)
+# }
+# 
+# ### Save objects
+# 
+# # Model
+# save(model,
+#      file = paste0(iSpeciesDir,
+#                    "/modelFit.RData"))
+# # Model summary
+# save(modelSummary,
+#      file = paste0(iSpeciesDir,
+#                    "/modelSummary.RData"))
+# 
+# # Model prediction object
+# save(modelPred,
+#      file = paste0(iSpeciesDir,
+#                    "/modelPred.RData"))
+# 
+# # Posterior median relative occurrence probability prediction
+# writeRaster(median_R,
+#             file = paste0(iSpeciesDir,
+#                           "/medianPred.tif"),
+#             overwrite= TRUE)
+# 
+# # Evaluation plot
+# ggsave(paste0(iSpeciesDir,
+#               "/effectsPlot_range_", estimated_range,
+#               "_logCPO_", logCPO, ".png"),
+#        evalPlot,
+#        width = 6000, height = 6000, 
+#        units = "px", dpi = 400,
+#        limitsize = FALSE)
+# 
+# # SPDE parameter posterior (range and variance) and
+# # matern correlation and covariance plot
+# ggsave(paste0(iSpeciesDir,
+#               "/MatCorCovPlot_range_", estimated_range,
+#               "_logCPO_", logCPO, ".png"),
+#        spdeAndMaternPlot,
+#        width = 6000, height = 3000,
+#        units = "px", dpi = 400,
+#        limitsize = FALSE)

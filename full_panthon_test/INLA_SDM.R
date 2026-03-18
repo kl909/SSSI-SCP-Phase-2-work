@@ -13,11 +13,11 @@ library(here)
 # SET PARAMETERS ---------------------------------------
 
 # Organise raw data taxa groups
-dataWET <- c( "Invertebrates", "Vertebrates", "Plants" ) # uncertain what this is doing for my data
+#dataWET <- c( "Invertebrates", "Vertebrates", "Plants" ) # uncertain what this is doing for my data
 
 
 # List range of years used for species records
-range = c(1970,2026)
+#range = c(1970,2026)
 
 
 # Set batch number/species (as.numeric(args[1])) and taxa group (arg[2]), specified array in job script

@@ -10,6 +10,14 @@ library(grid)
 library(gridExtra)
 library(here)
 
+# --- TEST SETTINGS ---
+test_mode <- TRUE  # Set to FALSE when you are ready for the overnight run
+if (test_mode) {
+  species_to_run <- all_species_list[1:3] # Just run the first 3 species
+} else {
+  species_to_run <- all_species_list      # Run all 80
+}
+
 # SET PARAMETERS ---------------------------------------
 
 # Organise raw data taxa groups
@@ -124,6 +132,19 @@ all_species_list <- unique(master_data$species)
 
 # [KL] loop over covariate script for each species
 for (target_species in all_species_list) {
+  
+  # skip species if already done
+  tidy_name <- gsub(" ", "_", target_species)
+  covar_file <- paste0("data/output/covars/covars_", tidy_name, ".rds")
+  summary_file <- paste0("data/output/clim_sums/clim_summary_", tidy_name, ".rds")
+  
+  # If BOTH files already exist, skip to the next species
+  if (file.exists(covar_file) & file.exists(summary_file)) {
+    message("Skipping covariate extraction for: ", target_species, " (Already exists)")
+    next
+  }
+  
+  # Rest of loop
   
   temp_df <- as.data.frame(master_data)
   
@@ -690,7 +711,7 @@ ggsave(filename = paste0("data/output/plots/space_time_", tidy_name, ".png"),
 
 ###################### [KL] works up to here
 ###################################################################################
-# # below is all for treescape connectivity
+# # below is all for treescape connectivity - change for river connectivity?
 # 
 # # COVER-CONNECTIVITY INTERACTION PLOTS
 # # COVER-CONNECTIVITY INTERACTION PLOTS

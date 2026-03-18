@@ -109,6 +109,10 @@ bng <- sf::st_crs(tempFile)$wkt
 # Remove temporary file
 unlink(tempFile)
 
+# SET UP FOLDER FOR PLOTS
+dir.create("data/output/plots", recursive = TRUE, showWarnings = FALSE)
+dir.create("data/output/models", recursive = TRUE, showWarnings = FALSE)
+
 # PROCESS COVARIATES -----------------------------------
 
 # Load species data
@@ -216,10 +220,10 @@ for (target_species in all_species_list) {
   tidy_name <- gsub(" ", "_", target_species)
   
   # save wide data
-  saveRDS(covarValues, paste0("data/output/covars_", tidy_name, ".rds"))
+  saveRDS(covarValues, paste0("data/output/covars/covars_", tidy_name, ".rds"))
   
   # save the long summary data
-  saveRDS(climCovarValues, paste0("data/output/clim_summary_", tidy_name, ".rds"))
+  saveRDS(climCovarValues, paste0("data/output/clim_summary/clim_summary_", tidy_name, ".rds"))
 }
 
 ------

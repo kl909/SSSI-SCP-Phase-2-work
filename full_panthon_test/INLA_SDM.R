@@ -10,14 +10,6 @@ library(grid)
 library(gridExtra)
 library(here)
 
-# --- TEST SETTINGS ---
-test_mode <- TRUE  # Set to FALSE when you are ready for the overnight run
-if (test_mode) {
-  species_to_run <- all_species_list[1:3] # Just run the first 3 species
-} else {
-  species_to_run <- all_species_list      # Run all 80
-}
-
 # SET PARAMETERS ---------------------------------------
 
 # Organise raw data taxa groups
@@ -88,6 +80,7 @@ for (i in list.files("data/spatial_data/vectors/",
                      i)))
 }
 
+# scale and match projection to RAIN raster
 order1_length <- project(order1_length, RAIN)
 order1_length <- scale(order1_length)
 order2_length <- project(order2_length, RAIN)
@@ -96,10 +89,8 @@ order3_length <- project(order3_length, RAIN)
 order3_length <- scale(order3_length)
 order10_area <- project(order10_area, RAIN)
 order10_area <- scale(order10_area)
+
 #-----------------------------------
-
-
-
 ### Download BNG WKT string
 # N.B. Individual filename needed for each task to prevent
 # different tasks tring to read/write at same time 
@@ -117,7 +108,8 @@ bng <- sf::st_crs(tempFile)$wkt
 # Remove temporary file
 unlink(tempFile)
 
-# SET UP FOLDER FOR PLOTS
+
+# SET UP FOLDER FOR PLOTS -----------------------------
 dir.create("data/output/plots", recursive = TRUE, showWarnings = FALSE)
 dir.create("data/output/models", recursive = TRUE, showWarnings = FALSE)
 
@@ -129,6 +121,14 @@ master_data <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECI
 
 # [KL] identify which species (mimicking Charles' 'batchN')
 all_species_list <- unique(master_data$species)
+
+# --- TEST SETTINGS ----
+test_mode <- TRUE  # Set to FALSE when you are ready for the overnight run
+if (test_mode) {
+  species_to_run <- all_species_list[1:3] # Just run the first 3 species
+} else {
+  species_to_run <- all_species_list      # Run all 80
+}
 
 # [KL] loop over covariate script for each species
 for (target_species in all_species_list) {
@@ -247,7 +247,7 @@ for (target_species in all_species_list) {
   saveRDS(climCovarValues, paste0("data/output/clim_summary/clim_summary_", tidy_name, ".rds"))
 }
 
-------
+#------
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
 
 # Remove data frames no longer needed 
@@ -255,6 +255,31 @@ for (target_species in all_species_list) {
 
 # Garbage clean
 gc()
+
+##### check data and load in covarValues and climCoverValues for loop
+for (target_species in all_species_list) {
+  
+  tidy_name <- gsub(" ", "_", target_species)
+  model_file <- paste0("data/output/models/model_", tidy_name, ".rds")
+  
+  # CHECKPOINT: Skip if we already finished this species in a previous run
+  if (file.exists(model_file)) {
+    message(">>> Skipping ", target_species, " (Model already exists)")
+    next 
+  }
+  
+  message(">>> Processing Model for: ", target_species)
+  
+  # LOAD THE OUTPUTS from your first loop
+  # We use try() here in case a specific RDS file is missing or corrupt
+  covarValues <- try(readRDS(paste0("data/output/covars/covars_", tidy_name, ".rds")))
+  climCovarValues <- try(readRDS(paste0("data/output/clim_sums/clim_summary_", tidy_name, ".rds")))
+  
+  if (inherits(covarValues, "try-error")) {
+    message("!!! Could not find data for ", target_species, ". Skipping.")
+    next
+  }
+}
 
 # CREATE MESH -------------------------------------------------------
 

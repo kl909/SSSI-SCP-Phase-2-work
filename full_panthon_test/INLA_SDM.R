@@ -666,26 +666,19 @@ spaceTime_R <- st_rasterize(spaceTimePred[, "median"],
 spaceTime_df <- as.data.frame(spaceTime_R, xy = TRUE) # Convert to data frame
 colnames(spaceTime_df)[3] <- "median"
 
-# Plot
+# Plot - THIS IS ONLY SPATIAL
 spaceTimePlot <- ggplot(data = spaceTime_df) +
   ggtitle("Spatio-temporal field")  +
   geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
   scale_fill_distiller(palette = "RdYlBu",
                        direction = 1,
-                       guide = guide_colourbar(title = "SPDE\nposterior\nmedian"),
                        limits = c(-1,1) * max(abs(spaceTime_df$median))) +
-  scale_colour_distiller(palette = "RdYlBu",
-                         direction = 1,
-                         guide = "none",
-                         limits = c(-1,1) * max(abs(spaceTime_df$median))) +
-  facet_wrap(~ iYear, labeller = as_labeller(timeLabels)) +
-  geom_text(data = timeLabels,
-            mapping = aes(x = 500, y = 925, label = label)) +
   theme_void() + 
-  theme(plot.title = element_text(hjust = 0.5, vjust = -1),
-        strip.text.x = element_blank()) +
+  theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
   coord_fixed() +
   geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black", inherit.aes = FALSE)
+
+
 
 # COVER-CONNECTIVITY INTERACTION PLOTS
 # COVER-CONNECTIVITY INTERACTION PLOTS

@@ -123,7 +123,7 @@ master_data <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECI
 all_species_list <- unique(master_data$species)
 
 # --- TEST SETTINGS ----
-test_mode <- TRUE  # Set to FALSE when you are ready for the overnight run
+test_mode <- FALSE  # Set to FALSE when you are ready for the overnight run
 if (test_mode) {
   species_to_run <- all_species_list[1:3] # Just run the first 3 species
 } else {
@@ -244,7 +244,10 @@ for (target_species in all_species_list) {
   saveRDS(covarValues, paste0("data/output/covars/covars_", tidy_name, ".rds"))
   
   # save the long summary data
-  saveRDS(climCovarValues, paste0("data/output/clim_summary/clim_summary_", tidy_name, ".rds"))
+  saveRDS(climCovarValues, paste0("data/output/clim_sums/clim_summary_", tidy_name, ".rds"))
+  
+  # save the spatial data
+  saveRDS(visitDataSpatial, paste0("data/output/spatial_objs/sp_", tidy_name, ".rds"))
 }
 
 #------
@@ -257,7 +260,7 @@ for (target_species in all_species_list) {
 gc()
 
 ##### check data and load in covarValues and climCoverValues for loop
-for (target_species in all_species_list) {
+for (target_species in all_species_list[1:2]) {
   
   tidy_name <- gsub(" ", "_", target_species)
   model_file <- paste0("data/output/models/model_", tidy_name, ".rds")
@@ -274,465 +277,474 @@ for (target_species in all_species_list) {
   # We use try() here in case a specific RDS file is missing or corrupt
   covarValues <- try(readRDS(paste0("data/output/covars/covars_", tidy_name, ".rds")))
   climCovarValues <- try(readRDS(paste0("data/output/clim_sums/clim_summary_", tidy_name, ".rds")))
+  visitDataSpatial <- try(readRDS(paste0("data/output/spatial_objs/sp_", tidy_name, ".rds")))
   
   if (inherits(covarValues, "try-error")) {
     message("!!! Could not find data for ", target_species, ". Skipping.")
     next
   }
-}
-
-# CREATE MESH -------------------------------------------------------
-
-# [KL] create simplifieed boundary of UK:
-uk_boundary_sf <- smoothUK %>%
-  aggregate(fact = 10) %>% 
-  as.polygons() %>%
-  st_as_sf() %>%
-  st_union()
-
-# [KL] convert to INLA format
-uk_boundary_sp <- as(uk_boundary_sf, "Spatial")
-
-# [KL] define km based BNG projection once
-crs_km <- st_crs(27700)$proj4string %>% 
-  gsub("units=m", "units=km", .)
-
-# Max edge is as a rule of thumb (range/3 to range/10)
-maxEdge <- estimated_range/5
-
-# Find record locations to build mesh from
-recordCoords <- crds(visitDataSpatial) %>% 
-  unique(.)
-
-# [KL] convert recordCoords to km
-recordCoords_km <- recordCoords / 1000
-
-# Create mesh (convert boundary to sp object as leads to best convergence)
-mesh <- inla.mesh.2d(boundary = uk_boundary_sp,
-                     loc = recordCoords_km,
-                     max.edge = c(1,5) * maxEdge,
-                     offset = c(1,2) * maxEdge, 
-                     cutoff = maxEdge/2,
-                     min.angle = 26,
-                     crs = crs_km)
-
-
-# FIT SPATIO-TEMPORAL MODEL ---------------------------------
-
-# Create indices -- NO TEMPORAL DIMENSION FOR US - MAKE SURE ONLY ONE YEAR
-
-# Define spatial SPDE priors
-mySpace <- inla.spde2.pcmatern(
-  mesh,
-  prior.range = c(1 * maxEdge, 0.5),
-  prior.sigma = c(1, 0.5))
-
-# Priors for fixed effects
-fixedHyper <- list( mean = 0,
-                    prec = 1 ) # Precision for all fixed effects except intercept
-
-# Priors for random effects
-randomHyper <- list(theta = list(prior="pc.prec",
-                                 param=c(0.5, 0.01)))
-
-# Set components
-inlabruCmp  <-  presence ~ 0 + Intercept(1) +
   
-  GDD5(main = GDD5_grp,
-       #main_layer = iYear,
-       model = "rw2",
-       scale.model = TRUE,
-       hyper = randomHyper) +
-  WMIN(main = WMIN_grp,
-       #main_layer = iYear,
-       model = "rw2",
-       scale.model = TRUE,
-       hyper = randomHyper) +
-  tasCV(main = tasCV_grp,
-        #main_layer = iYear,
-        model = "rw2",
-        scale.model = TRUE,
-        hyper = randomHyper) +
-  RAIN(main = RAIN_grp,
-       #main_layer = iYear,
-       model = "rw2",
-       scale.model = TRUE,
-       hyper = randomHyper) +
-  soilM(main = soilM_grp,
-        #main_layer = iYear,
-        model = "rw2",
-        scale.model = TRUE,
-        hyper = randomHyper) +
-  order1(main = order1_length,
+  try({
+    
+    
+
+  # CREATE MESH -------------------------------------------------------
+  
+  # [KL] create simplifieed boundary of UK:
+  uk_boundary_sf <- smoothUK %>%
+    aggregate(fact = 10) %>% 
+    as.polygons() %>%
+    st_as_sf() %>%
+    st_union()
+  
+  # [KL] convert to INLA format
+  uk_boundary_sp <- as(uk_boundary_sf, "Spatial")
+  
+  # [KL] define km based BNG projection once
+  crs_km <- st_crs(27700)$proj4string %>% 
+    gsub("units=m", "units=km", .)
+  
+  # Max edge is as a rule of thumb (range/3 to range/10)
+  maxEdge <- estimated_range/5
+  
+  # Find record locations to build mesh from
+  recordCoords <- crds(visitDataSpatial) %>% 
+    unique(.)
+  
+  # [KL] convert recordCoords to km
+  recordCoords_km <- recordCoords / 1000
+  
+  # Create mesh (convert boundary to sp object as leads to best convergence)
+  mesh <- inla.mesh.2d(boundary = uk_boundary_sp,
+                       loc = recordCoords_km,
+                       max.edge = c(1,5) * maxEdge,
+                       offset = c(1,2) * maxEdge, 
+                       cutoff = maxEdge/2,
+                       min.angle = 26,
+                       crs = crs_km)
+  
+  
+  # FIT SPATIO-TEMPORAL MODEL ---------------------------------
+  
+  # Create indices -- NO TEMPORAL DIMENSION FOR US - MAKE SURE ONLY ONE YEAR
+  
+  # Define spatial SPDE priors
+  mySpace <- inla.spde2.pcmatern(
+    mesh,
+    prior.range = c(1 * maxEdge, 0.5),
+    prior.sigma = c(1, 0.5))
+  
+  # Priors for fixed effects
+  fixedHyper <- list( mean = 0,
+                      prec = 1 ) # Precision for all fixed effects except intercept
+  
+  # Priors for random effects
+  randomHyper <- list(theta = list(prior="pc.prec",
+                                   param=c(0.5, 0.01)))
+  
+  # Set components
+  inlabruCmp  <-  presence ~ 0 + Intercept(1) +
+    
+    GDD5(main = GDD5_grp,
+         #main_layer = iYear,
+         model = "rw2",
+         scale.model = TRUE,
+         hyper = randomHyper) +
+    WMIN(main = WMIN_grp,
+         #main_layer = iYear,
+         model = "rw2",
+         scale.model = TRUE,
+         hyper = randomHyper) +
+    tasCV(main = tasCV_grp,
           #main_layer = iYear,
-          model = "linear") +
-  order2(main = order2_length,
+          model = "rw2",
+          scale.model = TRUE,
+          hyper = randomHyper) +
+    RAIN(main = RAIN_grp,
+         #main_layer = iYear,
+         model = "rw2",
+         scale.model = TRUE,
+         hyper = randomHyper) +
+    soilM(main = soilM_grp,
           #main_layer = iYear,
-          model = "linear") +
-  order3(main = order3_length,
-               #main_layer = iYear,
-               model = "linear") +
-  order10(main = order10_area,
+          model = "rw2",
+          scale.model = TRUE,
+          hyper = randomHyper) +
+    order1(main = order1_length,
             #main_layer = iYear,
             model = "linear") +
+    order2(main = order2_length,
+            #main_layer = iYear,
+            model = "linear") +
+    order3(main = order3_length,
+                 #main_layer = iYear,
+                 model = "linear") +
+    order10(main = order10_area,
+              #main_layer = iYear,
+              model = "linear") +
+    
+    visitLengthSingle(main = visitLengthSingle, model = "linear") +
+    visitLengthShort(main = visitLengthShort, model = "linear") +
+    
+    week(main = week,
+         model = "rw2",
+         cyclic = TRUE,
+         hyper = randomHyper) +
+    spaceTime(main = geometry, # this only space (no Time)
+              #group = iYear,
+              #ngroup = nYear,
+              model = mySpace)
+              #control.group = list(model = "ar1"), # don't need as only using space not time
+                                   #hyper = ar1Hyper))
   
-  visitLengthSingle(main = visitLengthSingle, model = "linear") +
-  visitLengthShort(main = visitLengthShort, model = "linear") +
+  # Fit model
+  model <- bru(components = inlabruCmp,
+               family = "binomial",
+               control.family = list(link = "cloglog"),
+               data = st_as_sf(visitDataSpatial),
+               options=list(control.fixed = fixedHyper,
+                            control.inla= list(int.strategy='eb'),
+                            control.compute = list(waic = TRUE, dic = FALSE, cpo = TRUE),
+                            verbose = TRUE))
   
-  week(main = week,
-       model = "rw2",
-       cyclic = TRUE,
-       hyper = randomHyper) +
-  spaceTime(main = geometry, # this only space (no Time)
-            #group = iYear,
-            #ngroup = nYear,
-            model = mySpace)
-            #control.group = list(model = "ar1"), # don't need as only using space not time
-                                 #hyper = ar1Hyper))
-
-# Fit model
-model <- bru(components = inlabruCmp,
-             family = "binomial",
-             control.family = list(link = "cloglog"),
-             data = st_as_sf(visitDataSpatial),
-             options=list(control.fixed = fixedHyper,
-                          control.inla= list(int.strategy='eb'),
-                          control.compute = list(waic = TRUE, dic = FALSE, cpo = TRUE),
-                          verbose = TRUE))
-
-# Assign model summary object and output
-modelSummary <- summary(model)
-
-
-
-# PREDICT -----------------------------------------
-# Create grid prediction pixels
-ppxl <- mask(UK_R, smoothUK) %>%
-  crop(.,smoothUK ) %>%
-  as.points %>%
-  st_as_sf
-
-
-
-# Predict using spatio model
-# ( N.B. excluding VISIT_LENGTH means including the reference factor level- long- which is what we want!)
-modelPred <- predict(model, 
-                     ppxl, 
-                     ~ data.frame(
-                       lambda =  1 - exp( -exp( spaceTime + # cloglog back transform
-                                                  soilM +
-                                                  WMIN +
-                                                  tasCV +
-                                                  GDD5 +
-                                                  RAIN +
-                                                  order1 +
-                                                  order2 +
-                                                  order3 +
-                                                  order10 +
-                                                  # Max value for week to predict over (removed later)
-                                                  max(model$summary.random$week$mean) + 
-                                                  Intercept ))),
-                     exclude = c("week")) 
-
-# MODEL EVALUATION --------------------------
-
-# SET PARAMETERS
-
-# Labels
-randomEffLabels <- c('GDD5' = "Growing degree days", 
-                     'RAIN' = "Annual precipiation",
-                     'soilM' = "Soil moisture", 
-                     'tasCV' = "Temperature seasonality",
-                     'week' = "Week of year" , 
-                     'WMIN' = "Winter minimum temperature"
-                     )
-
-linearEffLabels <- c('order1' = "order 1 river length",
-                     'order2' = "order 2 river length",
-                     'order3' = "order 3 river length",
-                     'order10' = "order 10 lake area",
-                     'visitLengthSingle' = "Single record visit",
-                     'visitLengthShort' = "Short visit (2-3 records)")
-
-
-# Template raster for converting from sf to terra raster objects
-template_R <- st_as_stars(UK_R)
-template_R[[1]][1:ncell(template_R)] <- NA
-
-# CALCULATE LOGCPO
-
-logCPO_vect = log(model$cpo$cpo[model$cpo$cpo != 0])
-logCPO_vect = logCPO_vect[is.finite(logCPO_vect)]
-logCPO = round(-sum(logCPO_vect, na.rm = T), digits = 2)
-
-# NON-SPATIAL RANDOM EFFECTS PLOT
-### Create effects data frame
-
-# Extract random effects from model, and exclude spatial
-randomEff_df <- model$summary.random
-randomEff_df["spaceTime"] <- NULL
-
-# Add name of random effect to each dataframe in list
-randomEff_df <- imap(randomEff_df, ~mutate(.x, randomEff = .y))
-
-# Unlist, then rename and select quantile columns
-randomEff_df <- do.call(rbind, randomEff_df)%>%
-  rename("q0.025" = "0.025quant",
-         "q0.5" = "0.5quant",
-         "q0.975" = "0.975quant")
-
-### Back scale non-spatial random covariate values
-
-# Apply 'unscaling' function to every row of effects data frame
-randomEff_df$unscaledID <- sapply(1:NROW(randomEff_df), function(x) {
+  # Assign model summary object and output
+  modelSummary <- summary(model)
   
-  # If week, just use ID as not scaled
-  if (randomEff_df$randomEff[x] == "week") {
-    
-    return(randomEff_df$ID[x])
-    
-  } else { # Otherwise, 'unscale'!
-    
-    # Extract covariate mean and sd for scaling function
-    randomEffMean <-
-      scalingParams[scalingParams$variable == randomEff_df$randomEff[x],
-                    "variableMean"]
-    randomEffSD <-
-      scalingParams[scalingParams$variable == randomEff_df$randomEff[x],
-                    "variableSD"]
-    
-    # Unscale using xSCALED = (x - xbar)/sd --> x = (xSCALED * sd) + xbar principle
-    unscaledID <- (randomEff_df$ID[x] * randomEffSD) + randomEffMean
-    
-    return(unscaledID) # Return unscaled value
-    
-  }})
-
-# Apply 'unscaling' function to every row of record locations
-climCovarValues$unscaledValue <- sapply(1:NROW(climCovarValues), function(x) {
+  # save model
+  saveRDS(model, paste0("data/output/models/model_", tidy_name, ".rds"))
   
-  # If week, just use value as not scaled
-  if (climCovarValues$randomEff[x] == "week") {
-    
-    return(climCovarValues$value[x])
-    
-  } else { # Otherwise, 'unscale'!
-    
-    # Extract covariate mean and sd for scaling function
-    randomEffMean <- scalingParams[scalingParams$variable == climCovarValues$randomEff[x],
-                                   "variableMean"]
-    randomEffSD <- scalingParams[scalingParams$variable == climCovarValues$randomEff[x],
-                                 "variableSD"]
-    
-    # Unscale using xSCALED = (x - xbar)/sd --> x = (xSCALED * sd) + xbar principle
-    unscaledValue <- (climCovarValues$value[x] * randomEffSD) + randomEffMean
-    
-    return(unscaledValue)
-    
-  }})
-
-### Plot
-
-randomEffPlot <- ggplot(randomEff_df) +
+  # PREDICT -----------------------------------------
+  # Create grid prediction pixels
+  ppxl <- mask(UK_R, smoothUK) %>%
+    crop(.,smoothUK ) %>%
+    as.points %>%
+    st_as_sf
   
-  # Random effect size
-  geom_line(aes(x = unscaledID, y = q0.5)) +
-  geom_line(aes(x = unscaledID, y = q0.025), lty = 2, alpha = .5) +
-  geom_line(aes(x = unscaledID, y = q0.975), lty = 2, alpha = .5) +
   
-  facet_wrap(~ randomEff, scale = 'free_x', labeller = as_labeller(randomEffLabels)) +
-  ggtitle("Non-linear random effects") + theme_minimal()
-
-# display plot
-randomEffPlot
-
-# save plot
-ggsave(filename = paste0("data/output/plots/random_eff_", tidy_name, ".png"),
-       plot = randomEffPlot, width = 10, height = 8, bg = "white")
-
-# FIXED EFFECTS PLOT
-# Loop through covariates and extract estimates
-fixed_effects_table <- modelSummary$inla$fixed
-
-# 2. Verify it's not NULL anymore (this should finally work!)
-#print(head(fixed_effects_table))
-
-# 3. Run the loop
-effectSizeAll <- data.frame()
-
-for (i in names(linearEffLabels)) {
-  if (i %in% rownames(fixed_effects_table)) {
-    effectSize <- as.data.frame(fixed_effects_table[i, , drop = FALSE])
-    effectSize$Covariate <- i
-    effectSizeAll <- rbind(effectSizeAll, effectSize)
+  
+  # Predict using spatio model
+  # ( N.B. excluding VISIT_LENGTH means including the reference factor level- long- which is what we want!)
+  modelPred <- predict(model, 
+                       ppxl, 
+                       ~ data.frame(
+                         lambda =  1 - exp( -exp( spaceTime + # cloglog back transform
+                                                    soilM +
+                                                    WMIN +
+                                                    tasCV +
+                                                    GDD5 +
+                                                    RAIN +
+                                                    order1 +
+                                                    order2 +
+                                                    order3 +
+                                                    order10 +
+                                                    # Max value for week to predict over (removed later)
+                                                    max(model$summary.random$week$mean) + 
+                                                    Intercept ))),
+                       exclude = c("week")) 
+  
+  # MODEL EVALUATION --------------------------
+  
+  # SET PARAMETERS
+  
+  # Labels
+  randomEffLabels <- c('GDD5' = "Growing degree days", 
+                       'RAIN' = "Annual precipiation",
+                       'soilM' = "Soil moisture", 
+                       'tasCV' = "Temperature seasonality",
+                       'week' = "Week of year" , 
+                       'WMIN' = "Winter minimum temperature"
+                       )
+  
+  linearEffLabels <- c('order1' = "order 1 river length",
+                       'order2' = "order 2 river length",
+                       'order3' = "order 3 river length",
+                       'order10' = "order 10 lake area",
+                       'visitLengthSingle' = "Single record visit",
+                       'visitLengthShort' = "Short visit (2-3 records)")
+  
+  
+  # Template raster for converting from sf to terra raster objects
+  template_R <- st_as_stars(UK_R)
+  template_R[[1]][1:ncell(template_R)] <- NA
+  
+  # CALCULATE LOGCPO
+  
+  logCPO_vect = log(model$cpo$cpo[model$cpo$cpo != 0])
+  logCPO_vect = logCPO_vect[is.finite(logCPO_vect)]
+  logCPO = round(-sum(logCPO_vect, na.rm = T), digits = 2)
+  
+  # NON-SPATIAL RANDOM EFFECTS PLOT
+  ### Create effects data frame
+  
+  # Extract random effects from model, and exclude spatial
+  randomEff_df <- model$summary.random
+  randomEff_df["spaceTime"] <- NULL
+  
+  # Add name of random effect to each dataframe in list
+  randomEff_df <- imap(randomEff_df, ~mutate(.x, randomEff = .y))
+  
+  # Unlist, then rename and select quantile columns
+  randomEff_df <- do.call(rbind, randomEff_df)%>%
+    rename("q0.025" = "0.025quant",
+           "q0.5" = "0.5quant",
+           "q0.975" = "0.975quant")
+  
+  ### Back scale non-spatial random covariate values
+  
+  # Apply 'unscaling' function to every row of effects data frame
+  randomEff_df$unscaledID <- sapply(1:NROW(randomEff_df), function(x) {
+    
+    # If week, just use ID as not scaled
+    if (randomEff_df$randomEff[x] == "week") {
+      
+      return(randomEff_df$ID[x])
+      
+    } else { # Otherwise, 'unscale'!
+      
+      # Extract covariate mean and sd for scaling function
+      randomEffMean <-
+        scalingParams[scalingParams$variable == randomEff_df$randomEff[x],
+                      "variableMean"]
+      randomEffSD <-
+        scalingParams[scalingParams$variable == randomEff_df$randomEff[x],
+                      "variableSD"]
+      
+      # Unscale using xSCALED = (x - xbar)/sd --> x = (xSCALED * sd) + xbar principle
+      unscaledID <- (randomEff_df$ID[x] * randomEffSD) + randomEffMean
+      
+      return(unscaledID) # Return unscaled value
+      
+    }})
+  
+  # Apply 'unscaling' function to every row of record locations
+  climCovarValues$unscaledValue <- sapply(1:NROW(climCovarValues), function(x) {
+    
+    # If week, just use value as not scaled
+    if (climCovarValues$randomEff[x] == "week") {
+      
+      return(climCovarValues$value[x])
+      
+    } else { # Otherwise, 'unscale'!
+      
+      # Extract covariate mean and sd for scaling function
+      randomEffMean <- scalingParams[scalingParams$variable == climCovarValues$randomEff[x],
+                                     "variableMean"]
+      randomEffSD <- scalingParams[scalingParams$variable == climCovarValues$randomEff[x],
+                                   "variableSD"]
+      
+      # Unscale using xSCALED = (x - xbar)/sd --> x = (xSCALED * sd) + xbar principle
+      unscaledValue <- (climCovarValues$value[x] * randomEffSD) + randomEffMean
+      
+      return(unscaledValue)
+      
+    }})
+  
+  ### Plot
+  
+  randomEffPlot <- ggplot(randomEff_df) +
+    
+    # Random effect size
+    geom_line(aes(x = unscaledID, y = q0.5)) +
+    geom_line(aes(x = unscaledID, y = q0.025), lty = 2, alpha = .5) +
+    geom_line(aes(x = unscaledID, y = q0.975), lty = 2, alpha = .5) +
+    
+    facet_wrap(~ randomEff, scale = 'free_x', labeller = as_labeller(randomEffLabels)) +
+    ggtitle("Non-linear random effects") + theme_minimal()
+  
+  # display plot
+  randomEffPlot
+  
+  # save plot
+  ggsave(filename = paste0("data/output/plots/random_eff_", tidy_name, ".png"),
+         plot = randomEffPlot, width = 10, height = 8, bg = "white")
+  
+  # FIXED EFFECTS PLOT
+  # Loop through covariates and extract estimates
+  fixed_effects_table <- modelSummary$inla$fixed
+  
+  # 2. Verify it's not NULL anymore (this should finally work!)
+  #print(head(fixed_effects_table))
+  
+  # 3. Run the loop
+  effectSizeAll <- data.frame()
+  
+  for (i in names(linearEffLabels)) {
+    if (i %in% rownames(fixed_effects_table)) {
+      effectSize <- as.data.frame(fixed_effects_table[i, , drop = FALSE])
+      effectSize$Covariate <- i
+      effectSizeAll <- rbind(effectSizeAll, effectSize)
+    }
   }
-}
-
-#rownames(effectSizeAll) <- NULL
-
-# Plot fixed effects
-fixedEffPlot <- ggplot(effectSizeAll, 
-                       aes(y = `0.5quant`, x = Covariate,
-                           ymin = `0.025quant`, ymax=`0.975quant`, 
-                           col = Covariate, fill = Covariate)) + 
-  #specify position here
-  geom_linerange(linewidth=4, colour = "lightblue") +
-  ggtitle("Linear effects") +
-  geom_hline(yintercept=0, lty=2) +
-  geom_point(size=2, shape=21, colour="white", fill = "black", stroke = 0.1) +
-  scale_x_discrete(name="",
-                   limits = rev(names(linearEffLabels)),
-                   labels = as_labeller(linearEffLabels)) +
-  scale_y_continuous(name="Effect size") +
-  coord_flip() +
-  theme_minimal() + 
-  guides(colour = "none") +
-  theme(axis.text.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        legend.text = element_text(size = 16),
-        plot.title = element_text(hjust = 0.5, vjust = -0.5))
-
-# display plot
-fixedEffPlot
-
-ggsave(filename = paste0("data/output/plots/fixed_eff_", tidy_name, ".png"),
-       plot = fixedEffPlot, width = 8, height = 6, bg = "white")
-
-### [KL] adding in prediction map plot
-
-# prob_raster <- st_rasterize(modelPred["mean"], template_R)
-# prob_raster_terra <- rast(prob_raster)
-# 
-# # Plot
-# ggplot() +
-#   geom_stars(data = prob_raster) +
-#   scale_fill_viridis_c(option = "magma", name = "Prob. of Presence") +
-#   coord_equal() +
-#   theme_minimal() +
-#   labs(title = paste("Predicted Distribution:", target_species))
-
-
-#####################################################
-
-# SPDE PARAMETER POSTERIORS
-
-# Extract range and variance of space-time SPDE, and plot
-range.plot <- plot( spde.posterior(model, "spaceTime", what = "range")) +
-  ggtitle("SPDE range") +
-  theme(plot.title = element_text(hjust = 0.5))
-var.plot <- plot(spde.posterior(model, "spaceTime", what = "log.variance")) +
-  ggtitle("SPDE log variance") +
-  theme(plot.title = element_text(hjust = 0.5))
-
-########################
-# MATERN CORRELATION AND COVARIANCE
-
-corplot <- plot(spde.posterior(model, "spaceTime", what = "matern.correlation")) +
-  ggtitle("Matern correlation") +
-  theme(plot.title = element_text(hjust = 0.5))
-covplot <- plot(spde.posterior(model, "spaceTime", what = "matern.covariance")) +
-  ggtitle("Matern covariance") +
-  theme(plot.title = element_text(hjust = 0.5))
-
-ggsave(filename = paste0("data/output/plots/cor_plot_", tidy_name, ".png"),
-       plot = corplot, width = 8, height = 6, bg = "white")
-ggsave(filename = paste0("data/output/plots/cov_plot_", tidy_name, ".png"),
-       plot = covplot, width = 8, height = 6, bg = "white")
-
-# MEDIAN AND SD PREDICTION PLOTS
-### Plot median
-
-# Convert to medians to spatRast for saving/plotting
-median_R <- st_rasterize(modelPred[, "median"],
-                           template = template_R,
-                           options = c("a_nodata = NA")) %>%
-  rast
-
-# Add names, i.e. iYear
-names(median_R) <- "Spatial_Prediction" # chage the name of this to "median"
-
-# Convert to data frame for plotting (single layer now)
-median_df <- as.data.frame(median_R, xy = TRUE) 
-colnames(median_df)[3] <- "median" # Ensure column is named 'median'
-
-# Plot posterior median
-predMedian <- ggplot(data = median_df) +
-  ggtitle("Median posterior occupancy") +
-  coord_fixed() +
-  geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
-  scale_fill_distiller(palette = "BuGn",
-                       direction = 1,
-                       limits = c(0,1),
-                       guide = guide_colourbar(title = "Occupancy\nprobability")) +
-  scale_colour_distiller(palette = "BuGn",
+  
+  #rownames(effectSizeAll) <- NULL
+  
+  # Plot fixed effects
+  fixedEffPlot <- ggplot(effectSizeAll, 
+                         aes(y = `0.5quant`, x = Covariate,
+                             ymin = `0.025quant`, ymax=`0.975quant`, 
+                             col = Covariate, fill = Covariate)) + 
+    #specify position here
+    geom_linerange(linewidth=4, colour = "lightblue") +
+    ggtitle("Linear effects") +
+    geom_hline(yintercept=0, lty=2) +
+    geom_point(size=2, shape=21, colour="white", fill = "black", stroke = 0.1) +
+    scale_x_discrete(name="",
+                     limits = rev(names(linearEffLabels)),
+                     labels = as_labeller(linearEffLabels)) +
+    scale_y_continuous(name="Effect size") +
+    coord_flip() +
+    theme_minimal() + 
+    guides(colour = "none") +
+    theme(axis.text.y = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          legend.text = element_text(size = 16),
+          plot.title = element_text(hjust = 0.5, vjust = -0.5))
+  
+  # display plot
+  fixedEffPlot
+  
+  ggsave(filename = paste0("data/output/plots/fixed_eff_", tidy_name, ".png"),
+         plot = fixedEffPlot, width = 8, height = 6, bg = "white")
+  
+  ### [KL] adding in prediction map plot
+  
+  # prob_raster <- st_rasterize(modelPred["mean"], template_R)
+  # prob_raster_terra <- rast(prob_raster)
+  # 
+  # # Plot
+  # ggplot() +
+  #   geom_stars(data = prob_raster) +
+  #   scale_fill_viridis_c(option = "magma", name = "Prob. of Presence") +
+  #   coord_equal() +
+  #   theme_minimal() +
+  #   labs(title = paste("Predicted Distribution:", target_species))
+  
+  
+  #####################################################
+  
+  # SPDE PARAMETER POSTERIORS
+  
+  # Extract range and variance of space-time SPDE, and plot
+  range.plot <- plot( spde.posterior(model, "spaceTime", what = "range")) +
+    ggtitle("SPDE range") +
+    theme(plot.title = element_text(hjust = 0.5))
+  var.plot <- plot(spde.posterior(model, "spaceTime", what = "log.variance")) +
+    ggtitle("SPDE log variance") +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  ########################
+  # MATERN CORRELATION AND COVARIANCE
+  
+  corplot <- plot(spde.posterior(model, "spaceTime", what = "matern.correlation")) +
+    ggtitle("Matern correlation") +
+    theme(plot.title = element_text(hjust = 0.5))
+  covplot <- plot(spde.posterior(model, "spaceTime", what = "matern.covariance")) +
+    ggtitle("Matern covariance") +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  ggsave(filename = paste0("data/output/plots/cor_plot_", tidy_name, ".png"),
+         plot = corplot, width = 8, height = 6, bg = "white")
+  ggsave(filename = paste0("data/output/plots/cov_plot_", tidy_name, ".png"),
+         plot = covplot, width = 8, height = 6, bg = "white")
+  
+  # MEDIAN AND SD PREDICTION PLOTS
+  ### Plot median
+  
+  # Convert to medians to spatRast for saving/plotting
+  median_R <- st_rasterize(modelPred[, "median"],
+                             template = template_R,
+                             options = c("a_nodata = NA")) %>%
+    rast
+  
+  # Add names, i.e. iYear
+  names(median_R) <- "Spatial_Prediction" # chage the name of this to "median"
+  
+  # Convert to data frame for plotting (single layer now)
+  median_df <- as.data.frame(median_R, xy = TRUE) 
+  colnames(median_df)[3] <- "median" # Ensure column is named 'median'
+  
+  # Plot posterior median
+  predMedian <- ggplot(data = median_df) +
+    ggtitle("Median posterior occupancy") +
+    coord_fixed() +
+    geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
+    scale_fill_distiller(palette = "BuGn",
                          direction = 1,
                          limits = c(0,1),
-                         guide = "none") +
-  # Removed facet_wrap and geom_text(timeLabels) as there is only one map
-  theme_void() + 
-  theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
-  geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
+                         guide = guide_colourbar(title = "Occupancy\nprobability")) +
+    scale_colour_distiller(palette = "BuGn",
+                           direction = 1,
+                           limits = c(0,1),
+                           guide = "none") +
+    # Removed facet_wrap and geom_text(timeLabels) as there is only one map
+    theme_void() + 
+    theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
+    geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
+  
+  ggsave(filename = paste0("data/output/plots/pred_median_", tidy_name, ".png"),
+         plot = predMedian, width = 8, height = 6, bg = "white")
+  
+  ### Plot posterior sd
+  # Convert SD to spatRast (single layer)
+  sd_R <- st_rasterize(modelPred[, "sd"],
+                       template = template_R,
+                       options = c("a_nodata = NA")) %>%
+    rast()
+  
+  # Convert to data frame for plotting
+  names(sd_R) <- "sd"
+  sd_df <- as.data.frame(sd_R, xy = TRUE)
+  
+  
+  predSD <- ggplot(data = sd_df) +
+    ggtitle("Posterior standard deviation") +
+    geom_tile(aes(x=x, y=y, fill = sd, colour = sd)) +
+    scale_fill_distiller(palette = "BuGn",
+                         direction = 1) +
+    # Removed facet_wrap and geom_text
+    theme_void() + 
+    #theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
+    coord_fixed() +
+    geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
+  
+  ggsave(filename = paste0("data/output/plots/pred_SD_", tidy_name, ".png"),
+         plot = predSD, width = 8, height = 6, bg = "white")
+  
+  # Predict spatial field only (no time groups)
+  spaceTimePred <- predict(model, 
+                           ppxl, # Predicts for just the grid once
+                           ~ data.frame(effectSize = spaceTime), # Looks for 'field'
+                           include = c("spaceTime"))
+  
+  # Convert to a single-layer raster
+  spaceTime_R <- st_rasterize(spaceTimePred[, "median"],
+                              template = template_R,
+                              options = c("a_nodata = NA")) %>%
+    rast()
+  
+  
+  # Convert to data frame for plotting
+  spaceTime_df <- as.data.frame(spaceTime_R, xy = TRUE) # Convert to data frame
+  colnames(spaceTime_df)[3] <- "median"
+  
+  # Plot - THIS IS ONLY SPATIAL
+  spaceTimePlot <- ggplot(data = spaceTime_df) +
+    ggtitle("Spatio-temporal field")  +
+    geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
+    scale_fill_distiller(palette = "RdYlBu",
+                         direction = 1,
+                         limits = c(-1,1) * max(abs(spaceTime_df$median))) +
+    theme_void() + 
+    theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
+    coord_fixed() +
+    geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black", inherit.aes = FALSE)
+  
+  ggsave(filename = paste0("data/output/plots/space_time_", tidy_name, ".png"),
+         plot = spaceTimePlot, width = 8, height = 6, bg = "white")
 
-ggsave(filename = paste0("data/output/plots/pred_median_", tidy_name, ".png"),
-       plot = predMedian, width = 8, height = 6, bg = "white")
 
-### Plot posterior sd
-# Convert SD to spatRast (single layer)
-sd_R <- st_rasterize(modelPred[, "sd"],
-                     template = template_R,
-                     options = c("a_nodata = NA")) %>%
-  rast()
-
-# Convert to data frame for plotting
-names(sd_R) <- "sd"
-sd_df <- as.data.frame(sd_R, xy = TRUE)
-
-
-predSD <- ggplot(data = sd_df) +
-  ggtitle("Posterior standard deviation") +
-  geom_tile(aes(x=x, y=y, fill = sd, colour = sd)) +
-  scale_fill_distiller(palette = "BuGn",
-                       direction = 1) +
-  # Removed facet_wrap and geom_text
-  theme_void() + 
-  #theme(plot.title = element_text(hjust = 0.5, vjust = -1)) +
-  coord_fixed() +
-  geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black")
-
-ggsave(filename = paste0("data/output/plots/pred_SD_", tidy_name, ".png"),
-       plot = predSD, width = 8, height = 6, bg = "white")
-
-# Predict spatial field only (no time groups)
-spaceTimePred <- predict(model, 
-                         ppxl, # Predicts for just the grid once
-                         ~ data.frame(effectSize = spaceTime), # Looks for 'field'
-                         include = c("spaceTime"))
-
-# Convert to a single-layer raster
-spaceTime_R <- st_rasterize(spaceTimePred[, "median"],
-                            template = template_R,
-                            options = c("a_nodata = NA")) %>%
-  rast()
-
-
-# Convert to data frame for plotting
-spaceTime_df <- as.data.frame(spaceTime_R, xy = TRUE) # Convert to data frame
-colnames(spaceTime_df)[3] <- "median"
-
-# Plot - THIS IS ONLY SPATIAL
-spaceTimePlot <- ggplot(data = spaceTime_df) +
-  ggtitle("Spatio-temporal field")  +
-  geom_tile(aes(x=x, y=y, fill = median, colour = median)) +
-  scale_fill_distiller(palette = "RdYlBu",
-                       direction = 1,
-                       limits = c(-1,1) * max(abs(spaceTime_df$median))) +
-  theme_void() + 
-  theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
-  coord_fixed() +
-  geom_sf(data = st_as_sf(smoothUK), fill = NA, colour = "black", inherit.aes = FALSE)
-
-ggsave(filename = paste0("data/output/plots/space_time_", tidy_name, ".png"),
-       plot = spaceTimePlot, width = 8, height = 6, bg = "white")
+  })
+}
 
 ###################### [KL] works up to here
 ###################################################################################

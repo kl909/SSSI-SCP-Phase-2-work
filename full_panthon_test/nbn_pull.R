@@ -1,3 +1,7 @@
+# This script is for pulling data from our species list (downloaded from Pantheon) from NBN.
+# This script may need to eventually be ran with the full species list, just change the first line
+# of code to point at complete species list.
+
 library(galah)
 library(rgbif)
 library(dplyr)
@@ -10,7 +14,7 @@ library(readr)
 
 ###### 1. get species list
 # load Pantheon species csv
-pantheon_data <- read_csv(here("pantheon_w2_species_list.csv"))
+pantheon_data <- read_csv(here("data/species_csv_files/pantheon_w2_species_list.csv"))
 
 # Pull species from Pantheon dataframe
 species_list <- pantheon_data %>%
@@ -185,11 +189,12 @@ nbn_gridref <- clean_3 %>%
 
 
 # 5. SAVE
-write.csv(nbn_gridref, "nbn_occurrences_cleaned.csv", row.names = FALSE)
+#write.csv(nbn_gridref, "nbn_occurrences_cleaned.csv", row.names = FALSE)
 
 ##### remove unnecessary columns
 final_data <- nbn_gridref %>%
   select(species = scientificName, gridReference, eventDate)
 
-write.csv(final_data, "nbn_final_data.csv", row.names = FALSE)
+# save ------------------
+write.csv(final_data, "data/species_csv_files/nbn_final_data.csv", row.names = FALSE)
 

@@ -1,11 +1,13 @@
+# This script combines the data pulled from GBIF and NBN
+
 library(readr)
 library(dplyr)
 library(here)
 
 
 # read in gbif and nbn filtered dataframes
-gbif_data <- read_csv(here("gbif_final_data.csv"))
-nbn_data  <- read_csv(here("nbn_final_data.csv"))
+gbif_data <- read_csv(here("data/species_csv_files/gbif_final_data.csv"))
+nbn_data  <- read_csv(here("data/species_csv_files/nbn_final_data.csv"))
 
 # merge datasets
 all_records <- bind_rows(gbif_data, nbn_data)
@@ -17,7 +19,7 @@ final_unique_data <- all_records %>%
 
 
 # read in Critchlow species which have already been modeled
-critchlow_data <- read_csv(here("critchlow_species.csv"))
+critchlow_data <- read_csv(here("data/species_csv_files/critchlow_species.csv"))
 
 # remove any species from final_unique_data which are listed in critchlow
 final_unique_data <- all_records %>%
@@ -25,4 +27,4 @@ final_unique_data <- all_records %>%
   anti_join(critchlow_data, by = "species")
 
 # save to csv
-write.csv(final_unique_data, "merged_data.csv", row.names = FALSE)
+write.csv(final_unique_data, "data/species_csv_files/merged_data.csv", row.names = FALSE)

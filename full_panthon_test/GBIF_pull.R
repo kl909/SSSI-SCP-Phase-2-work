@@ -1,3 +1,7 @@
+# This script is for pulling data from our species list (downloaded from Pantheon) from GBIF.
+# This script may need to eventually be ran with the full species list, just change the first line
+# of code to point at complete species list.
+
 library(galah)
 library(rgbif)              #for downloading datasets from gbif
 library(countrycode)        #for getting country names based on countryCode important
@@ -10,7 +14,7 @@ library(stringr)
 library(here)
 
 # Pantheon species list
-pantheon_data <- read_csv(here("pantheon_w2_species_list.csv"))
+pantheon_data <- read_csv(here("data/species_csv_files/pantheon_w2_species_list.csv"))
 
 
 # Pull species from Pantheon dataframe
@@ -18,6 +22,8 @@ species_list <- pantheon_data %>%
   pull(Species) %>%
   unique()
 
+
+# Function 1 - pull data from GBIF
 get_species_occ <- function(species_name, country = "GB", year = "1970,*") {
   
   # 1. Get the taxon key
@@ -74,10 +80,52 @@ get_species_occ <- function(species_name, country = "GB", year = "1970,*") {
   }
 }
 
-##### end of function
+##### end of function 1
 
+# Function 2: store temp files to assist with reruns
+get_and_save_species <- function(sp) {
+  
+  # Create a safe file name (no spaces)
+  safe_name <- gsub(" ", "_", sp)
+  temp_file <- here("species_temp", paste0(safe_name, ".csv"))
+  
+  # --- CHECK ---
+  if (file.exists(temp_file)) {
+    message(paste("Skipping", sp, "- already exists."))
+    # Read the existing file so it can be combined later
+    return(read_csv(temp_file, show_col_types = FALSE))
+  }
+  
+  # --- DOWNLOAD ---
+  message(paste("Downloading:", sp, "..."))
+  
+  # We use tryCatch so one failure doesn't stop the whole script
+  data <- tryCatch({
+    get_species_occ(sp) # This calls your original function
+  }, error = function(e) {
+    message(paste("!! Error with", sp, ":", e$message))
+    return(NULL)
+  })
+  
+  # --- SAVE ---
+  if (!is.null(data) && nrow(data) > 0) {
+    write_csv(data, temp_file)
+    message(paste("Saved", nrow(data), "records for", sp))
+  }
+  
+  return(data)
+}
+
+# End of function 2
+
+# set up environment
+# prevent timeout error
+options(gbif_curl_options = list(timeout = 300))
+dir.create(here("species_temp"), showWarnings = FALSE)
+
+# Execute the loop
 # loop over all species
-all_occurrences <- lapply(species_list, get_species_occ) %>%
+all_occurrences <- lapply(species_list, get_and_save_species) %>%
   bind_rows(.id = "species_index")
 
 # add species names 
@@ -86,12 +134,13 @@ all_occurrences$species_name <- species_list[all_occurrences$species_index]
 # save to csv
 #write.csv(all_occurrences, "test_occurances.csv", row.names = FALSE)
 
-######## start data cleaning
+# start data cleaning -------------------------------------------
 # Removes:
 # - missing coordinates
 # - duplicates
 # - zero / invalid / centroid / institution / GBIF HQ points
 # Removes records with >1 km spatial uncertainty
+
 data <- all_occurrences %>%
   filter(
     !is.na(decimalLatitude),
@@ -209,10 +258,11 @@ gbif_gridref <- gbif_sf %>%
   # Remove helper columns to keep it clean
   select(-east, -north, -idx_e, -idx_n, -mat_row, -grid_let, -e_1km, -n_1km)
 
-write_csv(gbif_gridref, here("gbif_occurrences_cleaned.csv"))
+#write_csv(gbif_gridref, here("gbif_occurrences_cleaned.csv"))
 
 ##### remove unnecessary columns
 final_data <- st_drop_geometry(gbif_gridref) %>%
   select(species, gridReference, eventDate)
 
-write_csv(final_data, here("gbif_final_data.csv"))
+# save csv file --------------------------------------------------------
+write_csv(final_data, here("data/species_csv_files/gbif_final_data.csv"))

@@ -1,3 +1,6 @@
+# This script is the final stage to create the species list required by INLA. It has been set up
+# to match the dataset used in INLA by Charles Cunningham and needs to be saved as a spatVector
+
 library(dplyr)
 library(readr)
 library(here)

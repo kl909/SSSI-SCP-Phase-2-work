@@ -7,7 +7,7 @@ library(lubridate)
 library(terra)
 
 # read in the data
-data <- read_csv(here("merged_data.csv"))
+data <- read_csv(here("data/species_csv_files/merged_data.csv"))
 
 # generate new dataframe for presences
 formatted_presence <- data %>%
@@ -62,11 +62,6 @@ final_dataset <- final_dataset %>%
     y = y + 500
   )
 
-#final_dataset <- final_dataset %>%
-#  mutate(
-#    x = x / 10,
-#    y = y / 10
-#  )
 
 # final formatting to match Charles'
 # get year column from the date column
@@ -86,9 +81,9 @@ final_dataset <- final_dataset %>%
   select(monad, date, year, visit, species, presence, numRecords, visitLength, x, y)
 
 # save as a csv for easy checking
-write.csv(final_dataset, here("final_data_2.csv"), row.names = FALSE)
+write.csv(final_dataset, here("data/species_csv_files/final_data_2.csv"), row.names = FALSE)
 
-# convert dataframe to a SpatVector
+# convert dataframe to a SpatVector for INLA
 final_vector <- vect(final_dataset, 
                      geom = c("x", "y"), 
                      crs = "EPSG:27700",
@@ -97,8 +92,6 @@ final_vector <- vect(final_dataset,
 # save as a SpatVector
 saveRDS(wrap(final_vector), here("data/species_data/final_vector.rds"))
 
-
-saveRDS(final_dataset, here("data/species_data/final_data.rds"), compress = FALSE)
 
 
 

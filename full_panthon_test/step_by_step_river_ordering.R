@@ -104,9 +104,39 @@ rivers_final2 <- rivers_final2 %>%
   select(-from, -to) %>%
   st_zm() # Make 2D
 
-# 9. Save as shapefile
+# 9. Save as whole shapefile
 st_write(
   rivers_final2, 
-  "../../data/os_rivers/data/OS_Watercourses_Ordered_2.shp", 
+  "data/spatial_data/river_data/OS_Watercourses_Ordered_2.shp", 
   delete_layer = TRUE
+)
+
+# save order 1:
+order1_rivers <- rivers_final2 %>%
+  filter(order == 1)
+
+st_write(
+  order1_rivers, 
+  "data/spatial_data/river_data/order1/order_1.gpkg", 
+  delete_dsn = TRUE
+)
+
+# save order 2:
+order2_rivers <- rivers_final2 %>%
+  filter(order == 2)
+
+st_write(
+  order2_rivers, 
+  "data/spatial_data/river_data/order2/order_2.gpkg", 
+  delete_dsn = TRUE
+)
+
+# save order 3:
+order3_rivers <- rivers_final2 %>%
+  filter(order == 3)
+
+st_write(
+  order3_rivers, 
+  "data/spatial_data/river_data/order3/order_3.gpkg", 
+  delete_dsn = TRUE
 )

@@ -1,3 +1,9 @@
+# KL wrote this script using Linux system Ubuntu 20.04.6 LTS which required some R packages to be slightly outdated. The INLA versions used are:
+# The INLA version used here is 25.10.19
+# The inlabru version is 2.14.0
+# This script was created 20/03/2026
+# For any questions please email me at kl909@york.ac.uk or message me on +44 7871173793
+
 library(INLA) 
 library(inlabru)
 library(sf)

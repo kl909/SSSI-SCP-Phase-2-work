@@ -5,7 +5,7 @@
 
 # pantheon_w2_species_list.csv <- data/species_csv_files/ <- this data was pulled from Pantheon and contains wetland species from the filter W2. Currently we only have invertebrate data, this list will need to # be updated eventually to contain wetland vertebrates too. 
 
-# WatercourseLink.shp <- ../../data/os_rivers/data/ <- this is from OS open data https://osdatahub.os.uk/data/downloads/open/OpenRivers and is the river data for the entire UK
+# WatercourseLink.shp <- data/spatial_data/river_data/os_rivers/data/WatercourseLink.shp <- this is from OS open data https://osdatahub.os.uk/data/downloads/open/OpenRivers and is the river data for the entire UK
 
 # 1km_grid.shp <- data/spatial_data/river_data <- 1km grid I made in QGIS over the entire UK used for creating river rasters
 

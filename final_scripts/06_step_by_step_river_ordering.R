@@ -6,7 +6,7 @@ library(here)
 library(purrr)
 
 # 1. Import OS river data
-rivers <- st_read("../../data/os_rivers/data/WatercourseLink.shp")
+rivers <- st_read("data/spatial_data/river_data/os_rivers/data/WatercourseLink.shp")
 
 # 2. Convert to a network object
 net <- as_sfnetwork(rivers, directed = TRUE, from = startNode, to = endNode)

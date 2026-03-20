@@ -80,14 +80,14 @@ get_species_occ <- function(species_name, country = "GB", year = "1970,*") {
   }
 }
 
-##### end of function 1
+# end of function 1
 
 # Function 2: store temp files to assist with reruns
 get_and_save_species <- function(sp) {
   
   # Create a safe file name (no spaces)
   safe_name <- gsub(" ", "_", sp)
-  temp_file <- here("species_temp", paste0(safe_name, ".csv"))
+  temp_file <- here("data/species_temp", paste0(safe_name, ".csv"))
   
   # --- CHECK ---
   if (file.exists(temp_file)) {
@@ -121,7 +121,7 @@ get_and_save_species <- function(sp) {
 # set up environment
 # prevent timeout error
 options(gbif_curl_options = list(timeout = 300))
-dir.create(here("species_temp"), showWarnings = FALSE)
+dir.create(here("data/species_temp"), showWarnings = FALSE)
 
 # Execute the loop
 # loop over all species

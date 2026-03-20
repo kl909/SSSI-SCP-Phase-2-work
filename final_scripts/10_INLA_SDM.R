@@ -48,7 +48,7 @@ paste(numThreads, "threads used") %>%
 # DATA FILES ------------------------------------------
 
 ### SPATIAL DATA
-# SpatRasters
+# SpatRasters Charles made
 #-- connW.tif   : woodland connectivity in Amperes - DON'T NEED
 #-- coverBF.tif : broadleaf woodland proportion cover of each 1x1km cell - DON'T NEED
 #-- coverCF.tif : coniferous woodland proportion cover of each 1x1km cell - DON'T NEED
@@ -122,16 +122,16 @@ master_data <- readRDS("data/species_data/final_vector.rds") # MY FILTERED SPECI
 # [KL] identify which species (mimicking Charles' 'batchN')
 all_species_list <- unique(master_data$species)
 
-# --- TEST SETTINGS ----
-test_mode <- FALSE  # Set to FALSE when you are ready for the overnight run
+# --- TEST SETTINGS ---- 
+test_mode <- FALSE  # Set to FALSE when you are ready for the full species run
 if (test_mode) {
   species_to_run <- all_species_list[1:3] # Just run the first 3 species
 } else {
-  species_to_run <- all_species_list      # Run all 80
+  species_to_run <- all_species_list      # Run all species
 }
 
 # [KL] loop over covariate script for each species
-for (target_species in all_species_list) {
+for (target_species in species_to_run) {
   
   # skip species if already done
   tidy_name <- gsub(" ", "_", target_species)
@@ -250,7 +250,7 @@ for (target_species in all_species_list) {
   saveRDS(visitDataSpatial, paste0("data/output/spatial_objs/sp_", tidy_name, ".rds"))
 }
 
-#------
+
 # TIDY MEMORY BEFORE MODEL RUN --------------------------------------
 
 # Remove data frames no longer needed 
@@ -260,12 +260,13 @@ for (target_species in all_species_list) {
 gc()
 
 ##### check data and load in covarValues and climCoverValues for loop
-for (target_species in all_species_list[1:2]) {
+for (target_species in all_species_list[1:2]) { # remove [1:2] to run script on all species, or just delete [1:2] if using the test settings from
+  # line 125. This loop will be very memory intensive so don't run on many species without Viking
   
   tidy_name <- gsub(" ", "_", target_species)
   model_file <- paste0("data/output/models/model_", tidy_name, ".rds")
   
-  # CHECKPOINT: Skip if we already finished this species in a previous run
+  # CHECKPOINT: Skip if this species has already been done in a previous run
   if (file.exists(model_file)) {
     message(">>> Skipping ", target_species, " (Model already exists)")
     next 
@@ -606,7 +607,7 @@ for (target_species in all_species_list[1:2]) {
   ggsave(filename = paste0("data/output/plots/fixed_eff_", tidy_name, ".png"),
          plot = fixedEffPlot, width = 8, height = 6, bg = "white")
   
-  ### [KL] adding in prediction map plot
+  ### [KL] adding in prediction map plot - this was just for Colin 
   
   # prob_raster <- st_rasterize(modelPred["mean"], template_R)
   # prob_raster_terra <- rast(prob_raster)
